@@ -1,0 +1,449 @@
+import Link from 'next/link'
+import type { Metadata } from 'next'
+import { requireFarm } from '@/lib/farm'
+import { createClient } from '@/lib/supabase/server'
+import { getFormOptions } from '@/lib/queries/options'
+import { area, date, kg, num, UNIT_LABEL } from '@/lib/format'
+import { PageHeader, EmptyState, Metric, MetricStrip, Section } from '@/components/ui/Layout'
+import { ButtonLink } from '@/components/ui/Button'
+import { Tabs } from '@/components/ui/Tabs'
+import { ProductionForm } from '@/components/forms/OperationForms'
+import { AchievedBar, ForecastForm, type ForecastRow } from './ForecastForm'
+
+export const metadata: Metadata = { title: 'Produção' }
+
+const TABS = [
+  { key: 'resumo', label: 'Resumo' },
+  { key: 'previsao', label: 'Previsão x realizado' },
+  { key: 'colheita', label: 'Colheita' },
+  { key: 'talhoes', label: 'Talhões' },
+  { key: 'variedades', label: 'Variedades' },
+]
+
+/** Linha por talhao usada nas abas — mesma forma com ou sem safra. */
+type PlotRow = {
+  plot_id: string
+  code: string
+  crop_name: string | null
+  variety_name: string | null
+  area: number
+  realized_kg: number
+  expected_t_ha: number | null
+}
+
+const tons = (kgValue: number) => `${num(kgValue / 1000, 1)} t`
+
+export default async function ProducaoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ aba?: string; novo?: string }>
+}) {
+  const [ctx, sp] = await Promise.all([requireFarm(), searchParams])
+  const supabase = await createClient()
+  const tab = sp.aba ?? 'resumo'
+  const season = ctx.season
+
+  // Tudo nesta pagina e' da safra ativa: e' o que torna a comparacao com
+  // a previsao (que e' por safra) honesta.
+  let recordsQuery = supabase
+    .from('production_records')
+    .select(
+      'id, harvest_date, quantity, unit, quantity_kg, destination, team, plots(code, name), varieties(name)',
+    )
+    .eq('farm_id', ctx.farm.id)
+    .order('harvest_date', { ascending: false })
+    .limit(300)
+  if (season) recordsQuery = recordsQuery.eq('season_id', season.id)
+
+  const [options, records, forecast, perf] = await Promise.all([
+    getFormOptions(ctx.farm.id),
+    recordsQuery,
+    season
+      ? supabase
+          .from('v_forecast')
+          .select('*')
+          .eq('farm_id', ctx.farm.id)
+          .eq('season_id', season.id)
+          .order('code')
+      : Promise.resolve({ data: null }),
+    // Sem safra cadastrada, cai no acumulado geral por talhao.
+    season
+      ? Promise.resolve({ data: null })
+      : supabase.from('v_plot_performance').select('*').eq('farm_id', ctx.farm.id).order('code'),
+  ])
+
+  const rows = records.data ?? []
+
+  const plots: PlotRow[] = forecast.data
+    ? forecast.data.map((f) => ({
+        plot_id: f.plot_id!,
+        code: f.code ?? '',
+        crop_name: f.crop_name,
+        variety_name: f.variety_name,
+        area: Number(f.area ?? 0),
+        realized_kg: Number(f.realized_kg ?? 0),
+        expected_t_ha: f.expected_t_ha !== null ? Number(f.expected_t_ha) : null,
+      }))
+    : (perf.data ?? []).map((p) => ({
+        plot_id: p.plot_id!,
+        code: p.code ?? '',
+        crop_name: p.crop_name,
+        variety_name: p.variety_name,
+        area: Number(p.area ?? 0),
+        realized_kg: Number(p.production_kg ?? 0),
+        expected_t_ha: null,
+      }))
+
+  const totalKg = rows.reduce((s, r) => s + Number(r.quantity_kg), 0)
+  const totalArea = plots.reduce((s, p) => s + p.area, 0)
+
+  // Previsao: so' conta o realizado dos talhoes que tem previsao, senao o
+  // percentual fica inflado por talhao sem meta.
+  const withForecast = plots.filter((p) => p.expected_t_ha !== null)
+  const expectedKg = withForecast.reduce((s, p) => s + p.expected_t_ha! * p.area * 1000, 0)
+  const realizedOnForecast = withForecast.reduce((s, p) => s + p.realized_kg, 0)
+  const pct = expectedKg > 0 ? (realizedOnForecast / expectedKg) * 100 : null
+
+  // Previsto x realizado por variedade (a variedade vem do talhao).
+  const byVariety = new Map<
+    string,
+    { area: number; expectedKg: number; realizedKg: number; forecastArea: number; realizedOnForecast: number }
+  >()
+  for (const p of plots) {
+    const key = p.variety_name ?? p.crop_name ?? 'Sem variedade'
+    const cur = byVariety.get(key) ?? {
+      area: 0,
+      expectedKg: 0,
+      realizedKg: 0,
+      forecastArea: 0,
+      realizedOnForecast: 0,
+    }
+    cur.area += p.area
+    cur.realizedKg += p.realized_kg
+    if (p.expected_t_ha !== null) {
+      cur.expectedKg += p.expected_t_ha * p.area * 1000
+      cur.forecastArea += p.area
+      cur.realizedOnForecast += p.realized_kg
+    }
+    byVariety.set(key, cur)
+  }
+  const varietyRows = [...byVariety.entries()].sort(
+    (a, b) => b[1].expectedKg + b[1].realizedKg - (a[1].expectedKg + a[1].realizedKg),
+  )
+
+  const forecastRows: ForecastRow[] = plots.map((p) => ({
+    plot_id: p.plot_id,
+    code: p.code,
+    area: p.area,
+    variety_name: p.variety_name,
+    crop_name: p.crop_name,
+    expected_t_ha: p.expected_t_ha,
+    realized_kg: p.realized_kg,
+  }))
+
+  const gap = expectedKg - realizedOnForecast
+
+  return (
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        title="Produção"
+        subtitle={season ? `Safra ${season.name}` : 'Todas as safras'}
+        actions={<ButtonLink href="/producao?novo=1">Registrar colheita</ButtonLink>}
+      />
+
+      {sp.novo === '1' && (
+        <ProductionForm
+          plots={options.plots}
+          varieties={options.varieties}
+          destinations={options.destinations}
+          closeHref="/producao"
+        />
+      )}
+
+      <MetricStrip>
+        <Metric label="Produção da safra" value={kg(totalKg, { asTon: true })} />
+        <Metric
+          label="Produtividade"
+          value={totalArea > 0 ? `${num(totalKg / 1000 / totalArea, 1)} t/ha` : '—'}
+        />
+        <Metric
+          label="Previsão da safra"
+          value={expectedKg > 0 ? tons(expectedKg) : '—'}
+          hint={
+            pct !== null
+              ? `${num(pct, 0)}% já realizado`
+              : season
+                ? 'ainda não informada'
+                : undefined
+          }
+          tone={pct !== null && pct >= 100 ? 'positive' : 'neutral'}
+        />
+        <Metric label="Colheitas" value={num(rows.length)} />
+        <Metric label="Área" value={area(totalArea)} />
+      </MetricStrip>
+
+      <Tabs items={TABS} />
+
+      {tab === 'resumo' && (
+        <>
+          {season && (
+            <Section title="Como está a safra">
+              {expectedKg === 0 ? (
+                <p className="text-sm text-text-muted">
+                  Informe a previsão em toneladas por hectare de cada talhão para acompanhar se a
+                  safra está indo bem.{' '}
+                  <Link
+                    href="/producao?aba=previsao"
+                    className="font-medium text-accent-text hover:underline"
+                  >
+                    Informar previsão
+                  </Link>
+                </p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <p className="max-w-[70ch] text-sm leading-relaxed text-text">
+                    Foram colhidas <span className="num font-semibold">{tons(realizedOnForecast)}</span>{' '}
+                    de <span className="num font-semibold">{tons(expectedKg)}</span> previstas
+                    {gap > 0 ? (
+                      <>
+                        {' '}— faltam <span className="num font-semibold">{tons(gap)}</span> para
+                        chegar à previsão.
+                      </>
+                    ) : (
+                      <>
+                        {' '}— <span className="num font-semibold">{tons(-gap)}</span> acima do
+                        previsto.
+                      </>
+                    )}
+                  </p>
+                  <div className="max-w-xl">
+                    <AchievedBar pct={pct} />
+                  </div>
+                </div>
+              )}
+            </Section>
+          )}
+
+          <Section title="Produção por talhão">
+            {plots.length === 0 ? (
+              <EmptyState title="Cadastre talhões para acompanhar a produção" />
+            ) : (
+              <ul className="divide-y divide-line">
+                {plots
+                  .slice()
+                  .sort((a, b) => b.realized_kg - a.realized_kg)
+                  .map((p) => {
+                    const share = totalKg > 0 ? (p.realized_kg / totalKg) * 100 : 0
+                    return (
+                      <li key={p.plot_id} className="py-3">
+                        <div className="flex items-baseline justify-between gap-4 text-sm">
+                          <span className="num font-medium">{p.code}</span>
+                          <span className="min-w-0 flex-1 truncate text-text-muted">
+                            {[p.crop_name, p.variety_name].filter(Boolean).join(' · ')}
+                          </span>
+                          <span className="num shrink-0">{kg(p.realized_kg)}</span>
+                          <span className="num w-20 shrink-0 text-right text-xs text-text-faint">
+                            {p.area > 0 ? `${num(p.realized_kg / 1000 / p.area, 1)} t/ha` : '—'}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-bg-sunken">
+                          <div
+                            className="h-full rounded-full bg-accent"
+                            style={{ width: `${share.toFixed(1)}%` }}
+                          />
+                        </div>
+                      </li>
+                    )
+                  })}
+              </ul>
+            )}
+          </Section>
+        </>
+      )}
+
+      {tab === 'previsao' &&
+        (!season ? (
+          <EmptyState
+            title="Crie uma safra para informar a previsão"
+            description="A previsão é feita por safra, para comparar com o que foi colhido nela."
+            action={<ButtonLink href="/safras?novo=1">Criar safra</ButtonLink>}
+          />
+        ) : plots.length === 0 ? (
+          <EmptyState
+            title="Cadastre talhões para informar a previsão"
+            action={<ButtonLink href="/talhoes/novo">Cadastrar talhão</ButtonLink>}
+          />
+        ) : (
+          <Section
+            title={`Previsão x realizado · safra ${season.name}`}
+            description="Previsão em toneladas por hectare. O volume previsto e o percentual atingido são calculados sozinhos."
+          >
+            <ForecastForm rows={forecastRows} seasonName={season.name} />
+          </Section>
+        ))}
+
+      {tab === 'colheita' && (
+        <Section title={season ? `Colheitas da safra ${season.name}` : 'Todas as colheitas'}>
+          {rows.length === 0 ? (
+            <EmptyState
+              title="Nenhuma colheita registrada"
+              description="Registre a primeira colheita e a produção por talhão, por hectare e por variedade aparece na hora."
+              action={<ButtonLink href="/producao?novo=1">Registrar colheita</ButtonLink>}
+            />
+          ) : (
+            <ul className="divide-y divide-line">
+              {rows.map((r) => {
+                const plot = r.plots as { code: string; name: string | null } | null
+                return (
+                  <li key={r.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3">
+                    <span className="num w-20 shrink-0 text-sm text-text-muted">
+                      {date(r.harvest_date)}
+                    </span>
+                    <span className="num w-14 shrink-0 text-sm font-medium">
+                      {plot?.code ?? '—'}
+                    </span>
+                    <span className="num text-sm">
+                      {num(Number(r.quantity), 2)} {UNIT_LABEL[r.unit]}
+                    </span>
+                    {r.unit !== 'kg' && (
+                      <span className="num text-xs text-text-faint">
+                        = {kg(Number(r.quantity_kg))}
+                      </span>
+                    )}
+                    <span className="text-xs text-text-muted">
+                      {(r.varieties as { name: string } | null)?.name ?? ''}
+                    </span>
+                    {r.destination && (
+                      <span className="ml-auto text-xs text-text-faint">→ {r.destination}</span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </Section>
+      )}
+
+      {tab === 'talhoes' && (
+        <Section title="Desempenho por talhão">
+          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+            <table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
+              <colgroup>
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '34%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '14%' }} />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-line-strong text-left">
+                  {['Talhão', 'Cultura', 'Área', 'Produção', 't/ha realizado', 't/ha previsto'].map(
+                    (h, i) => (
+                      <th
+                        key={h}
+                        className={`pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-text-faint ${i > 1 ? 'text-right' : ''}`}
+                      >
+                        {h}
+                      </th>
+                    ),
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {plots.map((p) => (
+                  <tr key={p.plot_id}>
+                    <td className="num py-2.5 font-medium">{p.code}</td>
+                    <td className="truncate py-2.5 pr-3 text-text-muted">
+                      {[p.crop_name, p.variety_name].filter(Boolean).join(' · ') || '—'}
+                    </td>
+                    <td className="num py-2.5 text-right">{area(p.area)}</td>
+                    <td className="num py-2.5 text-right">{kg(p.realized_kg)}</td>
+                    <td className="num py-2.5 text-right">
+                      {p.area > 0 ? num(p.realized_kg / 1000 / p.area, 1) : '—'}
+                    </td>
+                    <td className="num py-2.5 text-right text-text-muted">
+                      {p.expected_t_ha !== null ? num(p.expected_t_ha, 1) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
+
+      {tab === 'variedades' && (
+        <Section
+          title="Previsão x realizado por variedade"
+          description="Soma dos talhões de cada variedade. Sem previsão informada, mostra só o realizado."
+        >
+          {varietyRows.length === 0 ? (
+            <EmptyState title="Cadastre talhões com variedade para ver este comparativo" />
+          ) : (
+            <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+              <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+                <colgroup>
+                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '22%' }} />
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-line-strong text-left">
+                    {[
+                      ['Variedade', ''],
+                      ['Área', 'text-right'],
+                      ['Previsto', 'text-right'],
+                      ['Realizado', 'text-right'],
+                      ['t/ha previsto', 'text-right'],
+                      ['t/ha realizado', 'text-right'],
+                      ['% da previsão', 'pl-4'],
+                    ].map(([h, cls]) => (
+                      <th
+                        key={h}
+                        className={`pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-text-faint ${cls}`}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {varietyRows.map(([name, v]) => {
+                    const vPct =
+                      v.expectedKg > 0 ? (v.realizedOnForecast / v.expectedKg) * 100 : null
+                    return (
+                      <tr key={name}>
+                        <td className="truncate py-2.5 pr-3 font-medium">{name}</td>
+                        <td className="num py-2.5 text-right text-text-muted">
+                          {num(v.area, 2)} ha
+                        </td>
+                        <td className="num py-2.5 text-right">
+                          {v.expectedKg > 0 ? tons(v.expectedKg) : '—'}
+                        </td>
+                        <td className="num py-2.5 text-right">{tons(v.realizedKg)}</td>
+                        <td className="num py-2.5 text-right text-text-muted">
+                          {v.forecastArea > 0 ? num(v.expectedKg / 1000 / v.forecastArea, 1) : '—'}
+                        </td>
+                        <td className="num py-2.5 text-right text-text-muted">
+                          {v.area > 0 ? num(v.realizedKg / 1000 / v.area, 1) : '—'}
+                        </td>
+                        <td className="py-2.5 pl-4">
+                          <AchievedBar pct={vPct} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+      )}
+    </div>
+  )
+}

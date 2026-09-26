@@ -1,0 +1,33 @@
+import type { Metadata, Viewport } from 'next'
+import { GeistSans } from 'geist/font/sans'
+import { GeistMono } from 'geist/font/mono'
+import './globals.css'
+
+export const metadata: Metadata = {
+  title: {
+    default: 'Academia da Uva PRO',
+    template: '%s · Academia da Uva PRO',
+  },
+  description:
+    'Controle sua propriedade. Entenda seus números. Produza melhor. Gestão simples para o pequeno produtor de uva e manga.',
+  applicationName: 'Academia da Uva PRO',
+  formatDetection: { telephone: false },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // O produtor usa no campo, sob sol forte: a cor da barra segue o tema.
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#faf9f6' },
+    { media: '(prefers-color-scheme: dark)', color: '#151310' },
+  ],
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="pt-BR" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+      <body className="min-h-[100dvh] antialiased">{children}</body>
+    </html>
+  )
+}

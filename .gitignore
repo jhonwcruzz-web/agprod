@@ -1,0 +1,26 @@
+# Segredos — o .env tem a senha do banco e a service_role
+.env
+.env.*
+!.env.example
+
+# Dependências
+node_modules/
+tools/node_modules/
+
+# Build
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log
+
+# Skills de terceiros instaladas localmente (101 MB) — nao fazem parte do app
+.claude/
+
+# Vercel
+.vercel
