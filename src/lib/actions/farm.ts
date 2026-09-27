@@ -111,19 +111,24 @@ export async function createSeason(_prev: ActionState, formData: FormData): Prom
   const parsed = seasonSchema.safeParse(formToObject(formData))
   if (!parsed.success) return { error: firstIssue(parsed.error) }
 
-  const { error } = await w.supabase.from('seasons').insert({
-    farm_id: w.ctx.farm.id,
+  const row = {
     name: parsed.data.name,
     start_date: parsed.data.start_date,
     end_date: parsed.data.end_date,
     notes: parsed.data.notes,
-  })
+  }
+  // Campo oculto "id" = edicao da safra existente.
+  const rawId = formData.get('id')
+  const id = typeof rawId === 'string' && /^[0-9a-f-]{36}$/i.test(rawId) ? rawId : null
+  const { error } = id
+    ? await w.supabase.from('seasons').update(row).eq('id', id).eq('farm_id', w.ctx.farm.id)
+    : await w.supabase.from('seasons').insert({ farm_id: w.ctx.farm.id, ...row })
 
   if (error) return { error: dbError(error.message) }
 
   revalidatePath('/safras')
   revalidatePath('/', 'layout')
-  return { message: 'Safra criada.' }
+  return { message: id ? 'Safra atualizada.' : 'Safra criada.' }
 }
 
 export async function toggleSeasonActive(seasonId: string, isActive: boolean) {

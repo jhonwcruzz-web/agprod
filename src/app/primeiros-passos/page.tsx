@@ -27,7 +27,7 @@ export default async function PrimeirosPassosPage() {
 
       <p className="mt-4 max-w-[60ch] text-[15px] leading-relaxed text-text-muted">
         Só o nome é obrigatório — o resto você completa depois. Em seguida cadastramos o
-        primeiro talhão e você já pode começar a registrar colheita, aplicação e venda.
+        primeiro talhão e você já pode começar a registrar colheita, pulverização e venda.
       </p>
 
       <ol className="mt-8 flex flex-wrap items-center gap-x-2 gap-y-2 text-xs text-text-faint">

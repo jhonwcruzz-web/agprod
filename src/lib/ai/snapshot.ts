@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { FarmContext } from '@/lib/farm'
-import { EXPENSE_LABEL } from '@/lib/format'
+import { getExpenseCategoryNames } from '@/lib/queries/options'
 import { getPlotPerformance } from '@/lib/queries/plot-performance'
 
 /**
@@ -48,6 +48,7 @@ const n = (v: unknown) => Number(v ?? 0)
 
 export async function buildFarmSnapshot(ctx: FarmContext): Promise<FarmSnapshot> {
   const supabase = await createClient()
+  const catNames = await getExpenseCategoryNames()
   const farmId = ctx.farm.id
 
   const monthStart = new Date()
@@ -132,7 +133,7 @@ export async function buildFarmSnapshot(ctx: FarmContext): Promise<FarmSnapshot>
       result: n(p.result),
     })),
     costsByCategory: [...byCategory.entries()]
-      .map(([category, amount]) => ({ category: EXPENSE_LABEL[category] ?? category, amount }))
+      .map(([category, amount]) => ({ category: catNames.get(category) ?? category, amount }))
       .sort((a, b) => b.amount - a.amount),
     stock: (stock.data ?? []).map((s) => ({
       name: s.name ?? '',

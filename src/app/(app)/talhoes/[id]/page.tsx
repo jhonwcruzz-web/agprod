@@ -4,8 +4,10 @@ import type { Metadata, Route } from 'next'
 import { ArrowLeftIcon, PencilSimpleIcon } from '@phosphor-icons/react/dist/ssr'
 import { requireFarm } from '@/lib/farm'
 import { createClient } from '@/lib/supabase/server'
+import { FEATURES } from '@/lib/config'
 import { getPlotPerformance } from '@/lib/queries/plot-performance'
-import { area, date, kg, money, num, relativeDay, EXPENSE_LABEL, PLOT_STATUS_LABEL, UNIT_LABEL } from '@/lib/format'
+import { getExpenseCategoryNames } from '@/lib/queries/options'
+import { area, date, kg, money, num, relativeDay, PLOT_STATUS_LABEL, UNIT_LABEL } from '@/lib/format'
 import { Tabs } from '@/components/ui/Tabs'
 import {
   Badge,
@@ -19,15 +21,17 @@ import {
 import { ButtonLink } from '@/components/ui/Button'
 import { PlotEditPanel } from './PlotEditPanel'
 
-const TABS = [
+const ALL_TABS = [
   { key: 'resumo', label: 'Resumo' },
   { key: 'producao', label: 'Produção' },
-  { key: 'aplicacoes', label: 'Aplicações' },
+  { key: 'aplicacoes', label: 'Pulverização' },
   { key: 'adubacao', label: 'Adubação' },
   { key: 'irrigacao', label: 'Irrigação' },
   { key: 'custos', label: 'Custos' },
   { key: 'historico', label: 'Histórico' },
 ]
+
+const TABS = ALL_TABS.filter((t) => FEATURES.irrigation || t.key !== 'irrigacao')
 
 export async function generateMetadata({
   params,
@@ -125,7 +129,7 @@ export default async function TalhaoPage({
       {tab === 'producao' && <ProducaoTab plotId={id} seasonId={seasonId} />}
       {tab === 'aplicacoes' && <AplicacoesTab plotId={id} seasonId={seasonId} />}
       {tab === 'adubacao' && <AdubacaoTab plotId={id} seasonId={seasonId} />}
-      {tab === 'irrigacao' && <IrrigacaoTab plotId={id} seasonId={seasonId} />}
+      {FEATURES.irrigation && tab === 'irrigacao' && <IrrigacaoTab plotId={id} seasonId={seasonId} />}
       {tab === 'custos' && (
         <CustosTab
           plotId={id}
@@ -237,20 +241,30 @@ async function ResumoTab({
       </Section>
 
       <Section title="Atividade atual">
-        <dl className="grid gap-px overflow-hidden rounded-lg bg-line sm:grid-cols-3">
+        <dl
+          className={`grid gap-px overflow-hidden rounded-lg bg-line ${
+            FEATURES.irrigation ? 'sm:grid-cols-3' : 'sm:grid-cols-2'
+          }`}
+        >
           {[
             {
-              label: 'Última aplicação',
+              label: 'Última pulverização',
               value: lastApp.data ? date(lastApp.data.application_date, { short: true }) : '—',
               sub: lastApp.data?.product_name ?? 'nenhuma registrada',
             },
-            {
-              label: 'Última irrigação',
-              value: lastIrrig.data
-                ? date(lastIrrig.data.irrigation_date, { short: true })
-                : '—',
-              sub: lastIrrig.data ? relativeDay(lastIrrig.data.irrigation_date) : 'nenhuma registrada',
-            },
+            ...(FEATURES.irrigation
+              ? [
+                  {
+                    label: 'Última irrigação',
+                    value: lastIrrig.data
+                      ? date(lastIrrig.data.irrigation_date, { short: true })
+                      : '—',
+                    sub: lastIrrig.data
+                      ? relativeDay(lastIrrig.data.irrigation_date)
+                      : 'nenhuma registrada',
+                  },
+                ]
+              : []),
             {
               label: 'Última colheita',
               value: lastHarvest.data
@@ -347,13 +361,13 @@ async function AplicacoesTab({ plotId, seasonId }: { plotId: string; seasonId: s
   if (rows.length === 0)
     return (
       <EmptyState
-        title="Nenhuma aplicação registrada neste talhão"
-        action={<ButtonLink href="/aplicacoes?novo=1">Registrar aplicação</ButtonLink>}
+        title="Nenhuma pulverização registrada neste talhão"
+        action={<ButtonLink href="/pulverizacao?novo=1">Registrar pulverização</ButtonLink>}
       />
     )
 
   return (
-    <Section title="Linha do tempo de aplicações">
+    <Section title="Linha do tempo de pulverizações">
       {/* Timeline (secao 12): data, produto, dose — nada mais na linha. */}
       <ol className="relative border-l border-line pl-5">
         {rows.map((r) => (
@@ -387,7 +401,7 @@ async function AplicacoesTab({ plotId, seasonId }: { plotId: string; seasonId: s
       </ol>
 
       <p className="mt-5 flex items-baseline justify-between border-t border-line pt-4 text-sm">
-        <span className="text-text-muted">Custo acumulado de aplicações</span>
+        <span className="text-text-muted">Custo acumulado de pulverizações</span>
         <span className="num font-semibold">{money(total)}</span>
       </p>
     </Section>
@@ -508,6 +522,7 @@ async function CustosTab({
   production: number
 }) {
   const supabase = await createClient()
+  const catNames = await getExpenseCategoryNames()
 
   const [breakdown, recent] = await Promise.all([
     supabase
@@ -538,7 +553,7 @@ async function CustosTab({
     return (
       <EmptyState
         title="Nenhum custo lançado neste talhão"
-        description="Aplicações, adubações e irrigações lançam o custo aqui sozinhas. Mão de obra e outros gastos você registra em Custos."
+        description="Pulverizações, adubações e máquinas lançam o custo aqui sozinhas. Mão de obra e outros gastos você registra em Custos."
         action={<ButtonLink href="/custos?novo=1">Registrar despesa</ButtonLink>}
       />
     )
@@ -552,7 +567,7 @@ async function CustosTab({
             return (
               <li key={cat} className="py-3">
                 <div className="flex items-baseline justify-between gap-4 text-sm">
-                  <span>{EXPENSE_LABEL[cat] ?? cat}</span>
+                  <span>{catNames.get(cat) ?? cat}</span>
                   <span className="num font-medium">{money(amount)}</span>
                 </div>
                 {/* Barra proporcional: comparar categorias sem precisar de grafico. */}
@@ -600,7 +615,7 @@ async function CustosTab({
               </span>
               <span className="min-w-0 flex-1 truncate">{r.description}</span>
               <span className="shrink-0 text-xs text-text-faint">
-                {EXPENSE_LABEL[r.category] ?? r.category}
+                {catNames.get(r.category) ?? r.category}
               </span>
               <span className="num shrink-0 font-medium">{money(Number(r.amount))}</span>
             </li>
@@ -637,7 +652,7 @@ async function HistoricoTab({ plotId }: { plotId: string }) {
       .map((r) => ({
         id: `a${r.id}`,
         date: r.application_date!,
-        kind: 'Aplicação',
+        kind: 'Pulverização',
         text: r.product_name,
       })),
     ...(ferts.data ?? []).map((r) => ({
@@ -646,7 +661,7 @@ async function HistoricoTab({ plotId }: { plotId: string }) {
       kind: 'Adubação',
       text: `${r.product_name} · ${num(Number(r.quantity), 2)} ${UNIT_LABEL[r.unit]}`,
     })),
-    ...(irrig.data ?? []).map((r) => ({
+    ...(FEATURES.irrigation ? irrig.data ?? [] : []).map((r) => ({
       id: `i${r.id}`,
       date: r.irrigation_date,
       kind: 'Irrigação',

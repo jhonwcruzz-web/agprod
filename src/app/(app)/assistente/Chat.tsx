@@ -26,7 +26,7 @@ const SUGGESTIONS = [
 /** Para onde levar o produtor para concluir o lançamento proposto. */
 const TARGET: Record<ProposedRecord['tipo'], Route> = {
   colheita: '/producao?novo=1',
-  aplicacao: '/aplicacoes?novo=1',
+  aplicacao: '/pulverizacao?novo=1',
   adubacao: '/adubacao?novo=1',
   irrigacao: '/irrigacao?novo=1',
   venda: '/comercializacao?novo=1',

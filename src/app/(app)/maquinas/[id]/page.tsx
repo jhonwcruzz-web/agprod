@@ -33,7 +33,9 @@ import {
 } from '@/components/ui/Layout'
 import { ButtonLink } from '@/components/ui/Button'
 import { Tabs } from '@/components/ui/Tabs'
-import { MachineForm, MachineLogForm } from '@/components/forms/MachineForms'
+import { MachineForm } from '@/components/forms/MachineForms'
+import { MachineLogForm } from '@/components/forms/MachineLogForm'
+import { RowActions } from '@/components/ui/RowActions'
 
 const TABS = [
   { key: 'resumo', label: 'Resumo' },
@@ -56,7 +58,7 @@ export default async function MaquinaPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ aba?: string; editar?: string; registro?: string; tipo?: string }>
+  searchParams: Promise<{ aba?: string; editar?: string; registro?: string; tipo?: string; editar_registro?: string }>
 }) {
   const [ctx, { id }, sp] = await Promise.all([requireFarm(), params, searchParams])
   const supabase = await createClient()
@@ -71,11 +73,11 @@ export default async function MaquinaPage({
 
   if (!machine) notFound()
 
-  const [status, logs, coupled, implementsOn, options, tractors] = await Promise.all([
+  const [status, logs, coupled, implementsOn, options, tractors, editingLog] = await Promise.all([
     supabase.from('v_machine_status').select('*').eq('machine_id', id).maybeSingle(),
     supabase
       .from('machine_logs')
-      .select('*, plots(code)')
+      .select('*, plots(code), products(name)')
       .eq('machine_id', id)
       .order('log_date', { ascending: false })
       .order('created_at', { ascending: false })
@@ -88,7 +90,7 @@ export default async function MaquinaPage({
       .select('id, name, kind')
       .eq('coupled_to', id)
       .order('name'),
-    sp.registro === '1' ? getFormOptions(ctx.farm.id) : Promise.resolve(null),
+    sp.registro === '1' || sp.editar_registro ? getFormOptions(ctx.farm.id) : Promise.resolve(null),
     sp.editar === '1'
       ? supabase
           .from('machines')
@@ -98,7 +100,26 @@ export default async function MaquinaPage({
           .neq('status', 'inativo')
           .order('name')
       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    sp.editar_registro
+      ? supabase
+          .from('machine_logs')
+          .select('*')
+          .eq('id', sp.editar_registro)
+          .eq('machine_id', id)
+          .eq('farm_id', ctx.farm.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ])
+  const selfOption = [
+    {
+      id: machine.id,
+      name: machine.name,
+      class: machine.class,
+      meter_type: machine.meter_type,
+      current_meter: Number(machine.current_meter),
+    },
+  ]
+  const tabQs = sp.aba ? `?aba=${encodeURIComponent(sp.aba)}` : ''
 
   const s = status.data
   const rows = logs.data ?? []
@@ -201,19 +222,22 @@ export default async function MaquinaPage({
 
       {sp.registro === '1' && options && (
         <MachineLogForm
-          machines={[
-            {
-              id: machine.id,
-              name: machine.name,
-              class: machine.class,
-              meter_type: machine.meter_type,
-              current_meter: Number(machine.current_meter),
-            },
-          ]}
+          machines={selfOption}
           plots={options.plots}
-          closeHref={`/maquinas/${id}` as Route}
+          products={options.products}
+          closeHref={`/maquinas/${id}${tabQs}` as Route}
           defaultMachineId={machine.id}
           defaultType={sp.tipo === 'abastecimento' ? 'abastecimento' : 'preventiva'}
+        />
+      )}
+      {editingLog.data && options && (
+        <MachineLogForm
+          key={editingLog.data.id}
+          machines={selfOption}
+          plots={options.plots}
+          products={options.products}
+          closeHref={`/maquinas/${id}${tabQs}` as Route}
+          initial={editingLog.data}
         />
       )}
 
@@ -327,18 +351,19 @@ export default async function MaquinaPage({
             <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
               <table className="w-full min-w-[720px] table-fixed border-collapse text-sm">
                 <colgroup>
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '30%' }} />
                   <col style={{ width: '11%' }} />
-                  <col style={{ width: '17%' }} />
-                  <col style={{ width: '32%' }} />
+                  <col style={{ width: '13%' }} />
                   <col style={{ width: '12%' }} />
-                  <col style={{ width: '14%' }} />
-                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '10%' }} />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-line-strong text-left">
-                    {['Data', 'Tipo', 'Descrição', 'Uso', 'Próxima', 'Valor'].map((h, i) => (
+                    {['Data', 'Tipo', 'Descrição', 'Uso', 'Próxima', 'Valor', ''].map((h, i) => (
                       <th
-                        key={h}
+                        key={i}
                         className={`pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-text-faint ${
                           i === 3 || i === 5 ? 'text-right' : ''
                         }`}
@@ -368,6 +393,11 @@ export default async function MaquinaPage({
                           {l.log_type === 'abastecimento'
                             ? `${num(Number(l.liters ?? 0), 2)} L${l.supplier ? ` · ${l.supplier}` : ''}`
                             : (l.description ?? '—')}
+                          {(l.products as { name: string } | null)?.name && (
+                            <span className="ml-2 text-xs text-text-faint">
+                              estoque: {(l.products as { name: string }).name}
+                            </span>
+                          )}
                           {(l.plots as { code: string } | null)?.code && (
                             <span className="ml-2 text-xs text-text-faint">
                               {(l.plots as { code: string }).code}
@@ -379,6 +409,14 @@ export default async function MaquinaPage({
                         </td>
                         <td className="num truncate py-2.5 pl-3 text-text-muted">{next || '—'}</td>
                         <td className="num py-2.5 text-right font-medium">{money(Number(l.cost))}</td>
+                        <td className="py-2 text-right">
+                          <RowActions
+                            id={l.id}
+                            kind="registro_maquina"
+                            editHref={`/maquinas/${id}?${new URLSearchParams({ ...(sp.aba ? { aba: sp.aba } : {}), editar_registro: l.id })}` as Route}
+                            confirm="Excluir o registro? O custo e a baixa de estoque são desfeitos."
+                          />
+                        </td>
                       </tr>
                     )
                   })}

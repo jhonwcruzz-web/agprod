@@ -19,7 +19,7 @@ export type AssistantReply = {
 
 const MODEL = 'claude-opus-5'
 
-const SYSTEM = `Você é o assistente da Academia da Uva PRO, um sistema de gestão para pequenos produtores rurais de uva e manga no Brasil.
+const SYSTEM = `Você é o assistente da AGPROD, um sistema de gestão para pequenos produtores rurais de uva e manga no Brasil.
 
 COMO RESPONDER
 - Fale português do Brasil, de forma simples e direta, como quem conversa com um produtor rural. Nada de jargão de software.

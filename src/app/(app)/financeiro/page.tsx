@@ -1,7 +1,12 @@
-import type { Metadata } from 'next'
+import type { Metadata, Route } from 'next'
+import Link from 'next/link'
 import { requireFarm } from '@/lib/farm'
 import { createClient } from '@/lib/supabase/server'
-import { date, EXPENSE_LABEL, money, relativeDay, sinceDays } from '@/lib/format'
+import { getExpenseCategoryNames } from '@/lib/queries/options'
+import { byDate, eqIf, readFilters } from '@/lib/filters'
+import { editLink } from '@/lib/url'
+import { date, money, relativeDay, sinceDays } from '@/lib/format'
+import { FilterBar } from '@/components/ui/FilterBar'
 import { PageHeader, EmptyState, Badge, Metric, MetricStrip, Section } from '@/components/ui/Layout'
 import { ButtonLink } from '@/components/ui/Button'
 import { Tabs } from '@/components/ui/Tabs'
@@ -20,29 +25,25 @@ const TABS = [
 export default async function FinanceiroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ aba?: string }>
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   const [ctx, sp] = await Promise.all([requireFarm(), searchParams])
   const supabase = await createClient()
   const tab = sp.aba ?? 'resumo'
+  const f = readFilters(sp)
+
+  let revQ = supabase.from('revenues').select('*', { count: 'exact' }).eq('farm_id', ctx.farm.id)
+  revQ = byDate(revQ, 'revenue_date', f)
+  let expQ = supabase.from('expenses').select('*, plots(code)', { count: 'exact' }).eq('farm_id', ctx.farm.id)
+  expQ = eqIf(byDate(expQ, 'expense_date', f), 'category', f.categoria)
 
   // Financeiro olha TODAS as safras: conta a pagar ou a receber nao some
   // quando a safra muda. Os totais vem das views de resumo (somados no
   // banco); as listas sao so' para exibir.
-  const [revenues, expenses, openRevenues, openExpenses, revSummary, expSummary] =
+  const [revenues, expenses, openRevenues, openExpenses, revSummary, expSummary, names] =
     await Promise.all([
-      supabase
-        .from('revenues')
-        .select('*')
-        .eq('farm_id', ctx.farm.id)
-        .order('revenue_date', { ascending: false })
-        .limit(300),
-      supabase
-        .from('expenses')
-        .select('*, plots(code)')
-        .eq('farm_id', ctx.farm.id)
-        .order('expense_date', { ascending: false })
-        .limit(400),
+      revQ.order('revenue_date', { ascending: false }).limit(1000),
+      expQ.order('expense_date', { ascending: false }).limit(1000),
       // Em aberto buscadas a parte, pelo vencimento: as mais antigas (e mais
       // atrasadas) eram justamente as que caiam fora da lista dos recentes.
       supabase
@@ -61,6 +62,7 @@ export default async function FinanceiroPage({
         .limit(1000),
       supabase.from('v_revenue_summary').select('*').eq('farm_id', ctx.farm.id),
       supabase.from('v_expense_summary').select('*').eq('farm_id', ctx.farm.id),
+      getExpenseCategoryNames(),
     ])
 
   const revs = revenues.data ?? []
@@ -113,6 +115,17 @@ export default async function FinanceiroPage({
       </MetricStrip>
 
       <Tabs items={TABS} />
+
+      {(tab === 'receitas' || tab === 'despesas') && (
+        <FilterBar
+          exportType="financeiro"
+          selects={
+            tab === 'despesas'
+              ? [{ param: 'categoria', label: 'Categoria', options: [...names].map(([value, label]) => ({ value, label })) }]
+              : []
+          }
+        />
+      )}
 
       {tab === 'resumo' && (
         <Section title="Resultado do período">
@@ -178,7 +191,17 @@ export default async function FinanceiroPage({
                     <span className="num w-20 shrink-0 text-text-muted">
                       {date(r.revenue_date)}
                     </span>
-                    <span className="min-w-0 flex-1 truncate">{r.description}</span>
+                    {r.sale_id ? (
+                      <Link
+                        href={editLink('/comercializacao', { aba: 'vendas' }, r.sale_id)}
+                        className="min-w-0 flex-1 truncate hover:text-accent-text"
+                        title="Abrir a venda"
+                      >
+                        {r.description}
+                      </Link>
+                    ) : (
+                      <span className="min-w-0 flex-1 truncate">{r.description}</span>
+                    )}
                     {r.status !== 'pago' && (
                       <Badge tone={late ? 'danger' : 'warn'}>
                         {r.due_date
@@ -216,9 +239,19 @@ export default async function FinanceiroPage({
                     <span className="w-12 shrink-0 text-xs text-text-faint">
                       {(r.plots as { code: string } | null)?.code ?? '—'}
                     </span>
-                    <span className="min-w-0 flex-1 truncate">{r.description}</span>
+                    {r.source_table ? (
+                      <span className="min-w-0 flex-1 truncate">{r.description}</span>
+                    ) : (
+                      <Link
+                        href={editLink('/custos', { aba: 'lancamentos' }, r.id) as Route}
+                        className="min-w-0 flex-1 truncate hover:text-accent-text"
+                        title="Editar a despesa"
+                      >
+                        {r.description}
+                      </Link>
+                    )}
                     <span className="shrink-0 text-xs text-text-faint">
-                      {EXPENSE_LABEL[r.category] ?? r.category}
+                      {names.get(r.category) ?? r.category}
                     </span>
                     {r.status !== 'pago' && (
                       <>

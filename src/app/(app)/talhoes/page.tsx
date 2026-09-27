@@ -1,12 +1,13 @@
 import Link from 'next/link'
 import type { Route } from 'next'
+import { RowActions } from '@/components/ui/RowActions'
 import type { Metadata } from 'next'
 import { requireFarm } from '@/lib/farm'
 import { getPlotPerformance } from '@/lib/queries/plot-performance'
 import { getAttentionItems, plotLevel } from '@/lib/queries/attention'
 import { area, kg, money, num } from '@/lib/format'
 import { PageHeader, EmptyState, StatusDot, Section } from '@/components/ui/Layout'
-import { ButtonLink } from '@/components/ui/Button'
+import { ButtonLink, buttonClass } from '@/components/ui/Button'
 
 export const metadata: Metadata = { title: 'Talhões' }
 
@@ -39,13 +40,22 @@ export default async function TalhoesPage() {
               }`
             : undefined
         }
-        actions={<ButtonLink href="/talhoes/novo">Novo talhão</ButtonLink>}
+        actions={
+          <>
+            {rows.length > 0 && (
+              <a href="/api/exportar/talhoes" className={buttonClass('secondary')}>
+                Exportar Excel
+              </a>
+            )}
+            <ButtonLink href="/talhoes/novo">Novo talhão</ButtonLink>
+          </>
+        }
       />
 
       {rows.length === 0 ? (
         <EmptyState
           title="Nenhum talhão cadastrado"
-          description="Comece cadastrando as áreas da propriedade. Cada talhão tem sua própria central, com produção, aplicações, custos e histórico."
+          description="Comece cadastrando as áreas da propriedade. Cada talhão tem sua própria central, com produção, pulverizações, custos e histórico."
           action={<ButtonLink href="/talhoes/novo">Cadastrar talhão</ButtonLink>}
         />
       ) : (
@@ -65,14 +75,15 @@ export default async function TalhoesPage() {
                   <col style={{ width: '10%' }} />
                   <col style={{ width: '10%' }} />
                   <col style={{ width: '10%' }} />
-                  <col style={{ width: '16%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '8%' }} />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-line-strong text-left">
-                    {['Talhão', 'Cultura', 'Área', 'Produção', 'kg/ha', 'Custo', 'Custo/kg', 'Receita', 'Resultado'].map(
+                    {['Talhão', 'Cultura', 'Área', 'Produção', 'kg/ha', 'Custo', 'Custo/kg', 'Receita', 'Resultado', ''].map(
                       (h, i) => (
                         <th
-                          key={h}
+                          key={i}
                           className={`pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-text-faint ${
                             i > 1 ? 'text-right' : ''
                           }`}
@@ -122,6 +133,14 @@ export default async function TalhoesPage() {
                         >
                           {money(result, { compact: true })}
                         </td>
+                        <td className="py-2 text-right">
+                          <RowActions
+                            id={r.plot_id!}
+                            kind="talhao"
+                            editHref={`/talhoes/${r.plot_id}?editar=1` as Route}
+                            confirm="Excluir o talhão? Só é possível se ele não tiver lançamentos."
+                          />
+                        </td>
                       </tr>
                     )
                   })}
@@ -147,6 +166,7 @@ export default async function TalhoesPage() {
                     <td className="num py-3 text-right font-medium">
                       {money(totals.revenue - totals.cost, { compact: true })}
                     </td>
+                    <td />
                   </tr>
                 </tfoot>
               </table>

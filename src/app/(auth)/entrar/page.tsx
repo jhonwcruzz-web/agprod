@@ -13,13 +13,9 @@ export default async function EntrarPage({
 
   return (
     <div>
-      <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-accent-text lg:hidden">
-        Academia da Uva PRO
-      </p>
-
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight lg:mt-0">Entrar</h1>
+      <h1 className="text-3xl font-semibold tracking-tighter">Bom te ver de novo</h1>
       <p className="mt-2 text-sm text-text-muted">
-        Acesse o painel da sua propriedade.
+        Entre para ver os números da sua propriedade.
       </p>
 
       <SignInForm destino={destino} />

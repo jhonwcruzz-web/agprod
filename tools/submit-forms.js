@@ -85,6 +85,12 @@ function expectOk(label, r, successText) {
   }
 }
 
+/** Id de uma categoria de estoque padrao pelo nome. */
+async function categoryId(client, name) {
+  const { data } = await client.from('product_categories').select('id').is('farm_id', null).eq('name', name).single()
+  return data.id
+}
+
 async function main() {
   const email = `forms.${Date.now()}@example.test`
   const password = 'Senha-Forte-321'
@@ -106,7 +112,14 @@ async function main() {
   const { data: buyer } = await c.from('buyers')
     .insert({ farm_id: farm.id, name: 'Comprador X' }).select('id').single()
   const { data: product } = await c.from('products')
-    .insert({ farm_id: farm.id, name: 'Adubo X', category: 'fertilizante', unit: 'kg' }).select('id').single()
+    .insert({ farm_id: farm.id, name: 'Adubo X', category_id: await categoryId(c, 'Fertilizante'), unit: 'kg' }).select('id').single()
+  const { data: fungicide } = await c.from('products')
+    .insert({ farm_id: farm.id, name: 'Fungicida F', category_id: await categoryId(c, 'Defensivo'), unit: 'L' }).select('id').single()
+  // Saldo inicial com custo: pulverizacao e adubacao calculam o custo a partir dele.
+  await c.from('inventory_movements').insert([
+    { farm_id: farm.id, product_id: fungicide.id, movement_type: 'entrada', quantity: 50, unit_cost: 80, total_cost: 4000 },
+    { farm_id: farm.id, product_id: product.id, movement_type: 'entrada', quantity: 500, unit_cost: 3, total_cost: 1500 },
+  ])
   const { data: tractor } = await c.from('machines')
     .insert({ farm_id: farm.id, class: 'maquina', name: 'Trator T', meter_type: 'horas', current_meter: 100 })
     .select('id').single()
@@ -175,29 +188,25 @@ async function main() {
         category: 'mao_de_obra', description: 'Diária', amount: '2400', expense_date: today,
         plot_id: '', status: 'pago', supplier: '',
       }, 'expense_date'), 'Despesa registrada')
-    expectOk('aplicação realizada (sem data prevista na tela)',
-      await submit(cookie, '/aplicacoes?novo=1', {
-        status: 'realizada', application_date: today, plot_id: plot.id, product_id: '',
-        product_name: 'Produto Y', active_ingredient: '', dose: '2', dose_unit: 'L/ha', area: '',
-        total_quantity: '', spray_volume: '', cost: '150', equipment: '', responsible: '',
-      }, 'product_name'), 'Aplicação registrada')
-    expectOk('aplicação programada (sem data realizada na tela)',
-      await submit(cookie, '/aplicacoes?novo=1', {
-        status: 'programada', scheduled_date: today, plot_id: plot.id, product_id: '',
-        product_name: 'Produto Z', active_ingredient: '', dose: '', dose_unit: 'L/ha', area: '',
-        total_quantity: '', spray_volume: '', cost: '', equipment: '', responsible: '',
-      }, 'product_name'), 'Aplicação programada')
-    expectOk('adubação',
+    // Custo automatico: 2 L/ha x 2 ha = 4 L x R$ 80 = R$ 320.
+    expectOk('pulverização realizada (quantidade e custo calculados)',
+      await submit(cookie, '/pulverizacao?novo=1', {
+        status: 'realizada', application_date: today, plot_id: plot.id, product_id: fungicide.id,
+        dose: '2', dose_unit: 'L/ha', area: '', total_quantity: '', spray_volume: '', cost: '',
+        machine_id: tractor.id, implement_id: '', responsible: '',
+      }, 'dose_unit'), 'Pulverização registrada: 4 L baixados do estoque')
+    expectOk('pulverização programada (sem data realizada na tela)',
+      await submit(cookie, '/pulverizacao?novo=1', {
+        status: 'programada', scheduled_date: today, plot_id: plot.id, product_id: fungicide.id,
+        dose: '', dose_unit: 'L/ha', area: '', total_quantity: '', spray_volume: '', cost: '',
+        machine_id: '', implement_id: '', responsible: '',
+      }, 'dose_unit'), 'Pulverização programada')
+    expectOk('adubação (dose/ha calcula a quantidade)',
       await submit(cookie, '/adubacao?novo=1', {
-        fertilization_date: today, plot_id: plot.id, product_id: product.id, product_name: 'Adubo X',
-        quantity: '10', unit: 'kg', fert_type: '', application_method: '', cost: '', area: '',
-        responsible: '',
-      }, 'fertilization_date'), 'Adubação registrada')
-    expectOk('irrigação',
-      await submit(cookie, '/irrigacao?novo=1', {
-        irrigation_date: today, plot_id: plot.id, duration_minutes: '', volume_m3: '', method: '',
-        cost: '', responsible: '',
-      }, 'irrigation_date'), 'Irrigação registrada')
+        fertilization_date: today, plot_id: plot.id, product_id: product.id,
+        quantity: '', dose_per_ha: '5', fert_type: '', application_method: '', cost: '', area: '',
+        machine_id: '', implement_id: '', responsible: '',
+      }, 'fertilization_date'), 'Adubação registrada: 10 kg baixados do estoque')
     // Ajuste de inventario: sem custo unitario nem total na tela.
     expectOk('ajuste de estoque (sem custo na tela)',
       await submit(cookie, '/estoque?novo=1', {

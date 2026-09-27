@@ -56,6 +56,12 @@ function sessionCookies(session) {
   return chunks.map((c, i) => `${name}.${i}=${c}`)
 }
 
+/** Id de uma categoria de estoque padrao pelo nome. */
+async function categoryId(client, name) {
+  const { data } = await client.from('product_categories').select('id').is('farm_id', null).eq('name', name).single()
+  return data.id
+}
+
 async function main() {
   const email = `smoke.${Date.now()}@example.test`
   const password = 'Senha-Forte-789'
@@ -116,7 +122,7 @@ async function main() {
   })
 
   await c.from('products').insert({
-    farm_id: farm.id, name: 'Produto X', category: 'defensivo', unit: 'L',
+    farm_id: farm.id, name: 'Produto X', category_id: await categoryId(c, 'Defensivo'), unit: 'L',
     min_stock: 20, unit_cost: 50,
   })
 
@@ -146,7 +152,7 @@ async function main() {
   const plotPage = await get(`/talhoes/${plot.id}`)
   status('talhão carrega', plotPage.code, 200)
   contains('código do talhão', plotPage.html, 'P-03')
-  contains('abas do talhão', plotPage.html, 'Aplicações')
+  contains('abas do talhão', plotPage.html, 'Pulverização')
   contains('plantas', plotPage.html, '4.850')
   contains('sistema de condução', plotPage.html, 'Latada')
 
@@ -157,9 +163,8 @@ async function main() {
   console.log('\n4. Demais módulos')
   for (const [label, p, needle] of [
     ['produção', '/producao', 'Produtividade'],
-    ['aplicações', '/aplicacoes', 'Custo acumulado'],
-    ['adubação', '/adubacao', 'Total aplicado'],
-    ['irrigação', '/irrigacao', 'Situação dos talhões'],
+    ['pulverização', '/pulverizacao', 'Registrar pulverização'],
+    ['adubação', '/adubacao', 'Custo por hectare'],
     ['estoque', '/estoque', 'Produto X'],
     ['custos', '/custos', 'Custo de produção'],
     ['comercialização', '/comercializacao', 'Comprador A'],
@@ -193,6 +198,25 @@ async function main() {
   const vari = await get('/producao?aba=variedades')
   contains('comparativo por variedade', vari.html, 'Previsão x realizado por variedade')
   contains('variedade listada', vari.html, 'Vitória')
+
+  console.log('\n5c. Filtros, edição e Excel')
+  const login = await fetch(BASE + '/entrar', { signal: AbortSignal.timeout(120_000) })
+  contains('login com a marca AGPROD', await login.text(), 'AGPROD')
+  const filtered = await get(`/custos?aba=lancamentos&de=2000-01-01&ate=2100-12-31&talhao=${plot.id}`)
+  status('custos filtrados carregam', filtered.code, 200)
+  contains('barra de filtros', filtered.html, 'Exportar Excel')
+  contains('ações de linha (editar)', filtered.html, 'Editar')
+  for (const tipo of ['colheitas', 'pulverizacoes', 'adubacoes', 'custos', 'vendas', 'estoque', 'maquinas', 'talhoes', 'financeiro']) {
+    const res = await fetch(`${BASE}/api/exportar/${tipo}`, {
+      headers: { cookie: cookies },
+      signal: AbortSignal.timeout(120_000),
+    })
+    const buf = Buffer.from(await res.arrayBuffer())
+    // .xlsx e' um zip: comeca com "PK".
+    status(`excel ${tipo}`, res.status === 200 && buf.subarray(0, 2).toString() === 'PK' ? 200 : res.status, 200)
+  }
+  const anon = await fetch(`${BASE}/api/exportar/custos`, { redirect: 'manual', signal: AbortSignal.timeout(120_000) })
+  status('excel sem login é bloqueado', anon.status === 200 ? 200 : 401, 401)
 
   console.log('\n6. Limpeza')
   const pg = new Client({

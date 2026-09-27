@@ -21,6 +21,10 @@ const nextConfig: NextConfig = {
     // O pacote nao esta na lista otimizada por padrao do Next.
     optimizePackageImports: ['@phosphor-icons/react', '@phosphor-icons/react/dist/ssr'],
   },
+  // "Aplicacoes" virou "Pulverizacao": links e favoritos antigos continuam valendo.
+  async redirects() {
+    return [{ source: '/aplicacoes', destination: '/pulverizacao', permanent: true }]
+  },
   // Cabecalhos de seguranca. CSP fica fora daqui porque o Next injeta
   // scripts inline com nonce por requisicao — ver src/proxy.ts.
   async headers() {

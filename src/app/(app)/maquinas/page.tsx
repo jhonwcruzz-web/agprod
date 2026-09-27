@@ -23,7 +23,11 @@ import {
 } from '@/components/ui/Layout'
 import { ButtonLink } from '@/components/ui/Button'
 import { Tabs } from '@/components/ui/Tabs'
-import { MachineLogForm } from '@/components/forms/MachineForms'
+import { MachineLogForm } from '@/components/forms/MachineLogForm'
+import { FilterBar } from '@/components/ui/FilterBar'
+import { RowActions } from '@/components/ui/RowActions'
+import { byDate, eqIf, readFilters } from '@/lib/filters'
+import { closeLink, editLink } from '@/lib/url'
 
 export const metadata: Metadata = { title: 'Máquinas e implementos' }
 
@@ -80,6 +84,7 @@ function MachineTable({
           <col style={{ width: '14%' }} />
           <col style={{ width: '12%' }} />
           <col style={{ width: '10%' }} />
+          <col style={{ width: '8%' }} />
         </colgroup>
         <thead>
           <tr className="border-b border-line-strong text-left">
@@ -91,9 +96,10 @@ function MachineTable({
               'Próxima manutenção',
               'Custo total',
               'Situação',
+              '',
             ].map((h, i) => (
               <th
-                key={h}
+                key={i}
                 className={`pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-text-faint ${
                   i === 5 ? 'text-right' : ''
                 }`}
@@ -143,6 +149,14 @@ function MachineTable({
                     {MACHINE_STATUS_LABEL[m.status ?? 'operacional']}
                   </Badge>
                 </td>
+                <td className="py-2 text-right">
+                  <RowActions
+                    id={m.machine_id!}
+                    kind="maquina"
+                    editHref={`/maquinas/${m.machine_id}?editar=1` as Route}
+                    confirm="Excluir? Se já tem registros, ela fica inativa."
+                  />
+                </td>
               </tr>
             )
           })}
@@ -163,41 +177,47 @@ type LogRow = {
   liters: number | null
   cost: number
   machines: unknown
+  products?: unknown
+  product_quantity?: number | null
 }
 
+type SP = Record<string, string | undefined>
+
 /** Registros do diario. Manutencao e abastecimento tem colunas proprias. */
-function LogTable({ rows, fuel }: { rows: LogRow[]; fuel: boolean }) {
+function LogTable({ rows, fuel, sp }: { rows: LogRow[]; fuel: boolean; sp: SP }) {
   const columns = fuel
     ? [
-        { label: 'Data', width: '12%' },
-        { label: 'Máquina', width: '26%' },
-        { label: 'Posto', width: '26%' },
-        { label: 'Uso', width: '12%', right: true },
-        { label: 'Litros', width: '12%', right: true },
-        { label: 'Valor', width: '12%', right: true },
+        { label: 'Data', width: '11%' },
+        { label: 'Máquina', width: '24%' },
+        { label: 'Posto / estoque', width: '23%' },
+        { label: 'Uso', width: '11%', right: true },
+        { label: 'Litros', width: '10%', right: true },
+        { label: 'Valor', width: '11%', right: true },
+        { label: '', width: '10%' },
       ]
     : [
-        { label: 'Data', width: '11%' },
-        { label: 'Máquina', width: '20%' },
-        { label: 'Tipo', width: '16%' },
-        { label: 'O que foi feito', width: '29%' },
-        { label: 'Uso', width: '12%', right: true },
-        { label: 'Valor', width: '12%', right: true },
+        { label: 'Data', width: '10%' },
+        { label: 'Máquina', width: '18%' },
+        { label: 'Tipo', width: '13%' },
+        { label: 'O que foi feito', width: '27%' },
+        { label: 'Uso', width: '11%', right: true },
+        { label: 'Valor', width: '11%', right: true },
+        { label: '', width: '10%' },
       ]
 
   return (
     <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
       <table className="w-full min-w-[720px] table-fixed border-collapse text-sm">
         <colgroup>
-          {columns.map((c) => (
-            <col key={c.label} style={{ width: c.width }} />
+          {columns.map((c, i) => (
+            <col key={i} style={{ width: c.width }} />
           ))}
         </colgroup>
         <thead>
           <tr className="border-b border-line-strong text-left">
-            {columns.map((c) => (
+            {columns.map((c, i) => (
               <th
-                key={c.label}
+                key={i}
                 className={`pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-text-faint ${
                   c.right ? 'text-right' : ''
                 }`}
@@ -210,6 +230,7 @@ function LogTable({ rows, fuel }: { rows: LogRow[]; fuel: boolean }) {
         <tbody className="divide-y divide-line">
           {rows.map((l) => {
             const mach = l.machines as { name: string; meter_type: string } | null
+            const prod = (l.products as { name: string } | null)?.name
             const meter =
               l.meter_reading !== null
                 ? `${num(Number(l.meter_reading))} ${meterUnit(mach?.meter_type)}`
@@ -226,13 +247,23 @@ function LogTable({ rows, fuel }: { rows: LogRow[]; fuel: boolean }) {
                   </Link>
                 </td>
                 {fuel ? (
-                  <td className="truncate py-2.5 pr-3 text-text-muted">{l.supplier ?? '—'}</td>
+                  <td className="truncate py-2.5 pr-3 text-text-muted">
+                    {prod ? `estoque: ${prod}` : (l.supplier ?? '—')}
+                  </td>
                 ) : (
                   <>
                     <td className="truncate py-2.5 pr-3 text-text-muted">
                       {LOG_TYPE_LABEL[l.log_type]}
                     </td>
-                    <td className="truncate py-2.5 pr-3">{l.description ?? '—'}</td>
+                    <td className="py-2.5 pr-3">
+                      <span className="block truncate">{l.description ?? '—'}</span>
+                      {prod && (
+                        <span className="block truncate text-xs text-text-faint">
+                          estoque: {prod}
+                          {l.product_quantity ? ` · ${num(Number(l.product_quantity), 2)}` : ''}
+                        </span>
+                      )}
+                    </td>
                   </>
                 )}
                 <td className="num py-2.5 text-right text-text-muted">{meter}</td>
@@ -240,6 +271,14 @@ function LogTable({ rows, fuel }: { rows: LogRow[]; fuel: boolean }) {
                   <td className="num py-2.5 text-right">{num(Number(l.liters ?? 0), 2)} L</td>
                 )}
                 <td className="num py-2.5 text-right font-medium">{money(Number(l.cost))}</td>
+                <td className="py-2 text-right">
+                  <RowActions
+                    id={l.id}
+                    kind="registro_maquina"
+                    editHref={editLink('/maquinas', sp, l.id)}
+                    confirm="Excluir o registro? O custo e a baixa de estoque são desfeitos."
+                  />
+                </td>
               </tr>
             )
           })}
@@ -252,20 +291,22 @@ function LogTable({ rows, fuel }: { rows: LogRow[]; fuel: boolean }) {
 export default async function MaquinasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ aba?: string; registro?: string; tipo?: string; maquina?: string }>
+  searchParams: Promise<SP>
 }) {
   const [ctx, sp] = await Promise.all([requireFarm(), searchParams])
   const supabase = await createClient()
   const tab = sp.aba ?? 'maquinas'
+  const f = readFilters(sp)
 
-  const [statusRes, logsRes, options, machinesRes] = await Promise.all([
+  let logsQ = supabase
+    .from('machine_logs')
+    .select('*, machines(name, meter_type), products(name)', { count: 'exact' })
+    .eq('farm_id', ctx.farm.id)
+  logsQ = eqIf(byDate(logsQ, 'log_date', f), 'machine_id', f.maquina)
+
+  const [statusRes, logsRes, options, machinesRes, editing] = await Promise.all([
     supabase.from('v_machine_status').select('*').eq('farm_id', ctx.farm.id).order('name'),
-    supabase
-      .from('machine_logs')
-      .select('*, machines(name, meter_type)')
-      .eq('farm_id', ctx.farm.id)
-      .order('log_date', { ascending: false })
-      .limit(300),
+    logsQ.order('log_date', { ascending: false }).limit(1000),
     getFormOptions(ctx.farm.id),
     supabase
       .from('machines')
@@ -273,6 +314,9 @@ export default async function MaquinasPage({
       .eq('farm_id', ctx.farm.id)
       .neq('status', 'inativo')
       .order('name'),
+    sp.editar
+      ? supabase.from('machine_logs').select('*').eq('id', sp.editar).eq('farm_id', ctx.farm.id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ])
 
   const all = (statusRes.data ?? []) as Status[]
@@ -344,11 +388,22 @@ export default async function MaquinasPage({
           <MachineLogForm
             machines={logOptions}
             plots={options.plots}
-            closeHref="/maquinas"
-            defaultMachineId={sp.maquina}
+            products={options.products}
+            closeHref={closeLink('/maquinas', { ...sp, registro: undefined })}
+            defaultMachineId={f.maquina ?? undefined}
             defaultType={sp.tipo === 'abastecimento' ? 'abastecimento' : 'preventiva'}
           />
         ))}
+      {editing.data && (
+        <MachineLogForm
+          key={editing.data.id}
+          machines={logOptions}
+          plots={options.plots}
+          products={options.products}
+          closeHref={closeLink('/maquinas', sp)}
+          initial={editing.data}
+        />
+      )}
 
       <MetricStrip>
         <Metric label="Máquinas" value={num(machines.length)} />
@@ -465,6 +520,15 @@ export default async function MaquinasPage({
           )}
 
           {(tab === 'manutencoes' || tab === 'abastecimentos') && (
+            <FilterBar
+              exportType="maquinas"
+              selects={[
+                { param: 'maquina', label: 'Máquina', options: logOptions.map((m) => ({ value: m.id, label: m.name })) },
+              ]}
+            />
+          )}
+
+          {(tab === 'manutencoes' || tab === 'abastecimentos') && (
             <Section title={tab === 'manutencoes' ? 'Manutenções' : 'Abastecimentos'}>
               {(tab === 'manutencoes' ? services : fuel).length === 0 ? (
                 <EmptyState
@@ -489,6 +553,7 @@ export default async function MaquinasPage({
                 <LogTable
                   rows={tab === 'manutencoes' ? services : fuel}
                   fuel={tab === 'abastecimentos'}
+                  sp={sp}
                 />
               )}
             </Section>

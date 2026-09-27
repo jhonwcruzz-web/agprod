@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { money, kg, relativeDay } from '@/lib/format'
+import { FEATURES } from '@/lib/config'
 
 export type AttentionItem = {
   id: string
@@ -105,14 +106,14 @@ export async function getAttentionItems(farmId: string, seasonId?: string) {
     items.push({
       id: `aplic-${a.id}`,
       severity: 'atencao',
-      text: `Aplicação de ${a.product_name} prevista ${relativeDay(a.scheduled_date)}`,
-      href: '/aplicacoes?aba=programadas',
+      text: `Pulverização de ${a.product_name} prevista ${relativeDay(a.scheduled_date)}`,
+      href: '/pulverizacao?aba=programadas',
     })
   }
 
   // --- talhoes sem irrigacao registrada
   const plotList = plots.data ?? []
-  if (plotList.length > 0) {
+  if (FEATURES.irrigation && plotList.length > 0) {
     const { data: lastIrrigation } = await supabase
       .from('irrigation_records')
       .select('plot_id, irrigation_date')

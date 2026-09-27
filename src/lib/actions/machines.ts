@@ -15,6 +15,7 @@ import {
   optionalUuid,
   requireWriteContext,
 } from './shared'
+import { stockCost } from '@/lib/calc'
 
 const zeroOrMore = decimal.transform((v) => v ?? 0)
 
@@ -108,7 +109,12 @@ const logSchema = z.object({
   description: optionalText,
   meter_reading: decimal,
   liters: decimal,
-  cost: zeroOrMore,
+  // Produto tirado do estoque: diesel no abastecimento, oleo/filtro/peca
+  // na manutencao. Da' baixa sozinho (trigger) e define o custo.
+  product_id: optionalUuid,
+  product_quantity: decimal,
+  // Vazio = calcular pelo estoque; preenchido = valor informado.
+  cost: decimal,
   next_due_date: optionalDate,
   next_due_meter: decimal,
   plot_id: optionalUuid,
@@ -117,10 +123,7 @@ const logSchema = z.object({
   notes: optionalText,
 })
 
-export async function createMachineLog(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
+export async function saveMachineLog(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const w = await requireWriteContext()
   if ('error' in w) return { error: w.error }
 
@@ -128,38 +131,65 @@ export async function createMachineLog(
   if (!parsed.success) return { error: firstIssue(parsed.error) }
 
   const d = parsed.data
-  if (d.log_type === 'abastecimento' && !d.liters)
-    return { error: 'Informe quantos litros foram abastecidos.' }
-  if (d.log_type !== 'abastecimento' && !d.description)
-    return { error: 'Descreva o que foi feito.' }
+  const isFuel = d.log_type === 'abastecimento'
+  if (isFuel && !d.liters) return { error: 'Informe quantos litros foram abastecidos.' }
+  if (!isFuel && !d.description) return { error: 'Descreva o que foi feito.' }
 
   // Ao informar a proxima pelo horimetro, ela precisa estar a' frente.
   if (d.next_due_meter !== null && d.meter_reading !== null && d.next_due_meter <= d.meter_reading)
     return { error: 'A próxima manutenção precisa ser depois da leitura atual.' }
 
-  const { error } = await w.supabase.from('machine_logs').insert({
-    farm_id: w.ctx.farm.id,
-    season_id: w.ctx.season?.id ?? null,
-    created_by: w.ctx.userId,
+  // Quantidade tirada do estoque: no abastecimento sao os proprios litros.
+  const qty = d.product_id ? (d.product_quantity ?? (isFuel ? d.liters : null)) : null
+  if (d.product_id && !qty) return { error: 'Informe a quantidade tirada do estoque.' }
+
+  let cost = d.cost
+  if (cost === null && d.product_id && qty) {
+    const { data: p } = await w.supabase
+      .from('products')
+      .select('unit_cost')
+      .eq('id', d.product_id)
+      .eq('farm_id', w.ctx.farm.id)
+      .maybeSingle()
+    if (!p) return { error: 'Produto não encontrado no estoque desta propriedade.' }
+    cost = stockCost(qty, Number(p.unit_cost))
+  }
+
+  const row = {
     ...d,
-    liters: d.log_type === 'abastecimento' ? d.liters : null,
-  })
+    liters: isFuel ? d.liters : null,
+    product_quantity: qty,
+    cost: cost ?? 0,
+  }
+
+  const id = String(formData.get('id') ?? '')
+  const { error } = /^[0-9a-f-]{36}$/i.test(id)
+    ? await w.supabase.from('machine_logs').update(row).eq('id', id).eq('farm_id', w.ctx.farm.id)
+    : await w.supabase.from('machine_logs').insert({
+        farm_id: w.ctx.farm.id,
+        season_id: w.ctx.season?.id ?? null,
+        created_by: w.ctx.userId,
+        ...row,
+      })
 
   if (error) {
-    if (error.message.includes('nao pertence'))
-      return { error: 'Máquina não encontrada nesta propriedade.' }
+    if (error.message.includes('nao pertence') || error.message.includes('não pertence'))
+      return { error: 'Máquina ou produto não encontrado nesta propriedade.' }
     return { error: dbError(error.message) }
   }
 
   revalidatePath('/maquinas')
   revalidatePath(`/maquinas/${d.machine_id}`)
   revalidatePath('/custos')
+  revalidatePath('/estoque')
   revalidatePath('/')
+  const editing = /^[0-9a-f-]{36}$/i.test(id)
   return {
-    message:
-      d.log_type === 'abastecimento'
-        ? 'Abastecimento registrado e lançado em combustível.'
-        : 'Registro salvo e lançado nos custos.',
+    message: editing
+      ? 'Registro atualizado.'
+      : isFuel
+        ? `Abastecimento registrado e lançado em combustível${d.product_id ? ' — diesel baixado do estoque' : ''}.`
+        : `Registro salvo e lançado nos custos${d.product_id ? ' — peça baixada do estoque' : ''}.`,
   }
 }
 

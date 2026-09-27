@@ -62,6 +62,12 @@ async function signIn(user) {
   return { client: c, userId: data.user.id }
 }
 
+/** Id de uma categoria de estoque padrao pelo nome. */
+async function categoryId(client, name) {
+  const { data } = await client.from('product_categories').select('id').is('farm_id', null).eq('name', name).single()
+  return data.id
+}
+
 async function main() {
   const created = []
 
@@ -139,7 +145,7 @@ async function main() {
   console.log('\n3. Estoque: entrada, baixa por aplicacao e por adubacao')
   const { data: product } = await a.client
     .from('products')
-    .insert({ farm_id: farmA.id, name: 'Produto X', category: 'defensivo', unit: 'L', min_stock: 20, unit_cost: 50 })
+    .insert({ farm_id: farmA.id, name: 'Produto X', category_id: await categoryId(a.client, 'Defensivo'), unit: 'L', min_stock: 20, unit_cost: 50 })
     .select('id')
     .single()
 
@@ -181,7 +187,7 @@ async function main() {
   // adubacao
   const { data: fert } = await a.client
     .from('products')
-    .insert({ farm_id: farmA.id, name: '20-05-20', category: 'fertilizante', unit: 'kg', min_stock: 100, unit_cost: 11.5 })
+    .insert({ farm_id: farmA.id, name: '20-05-20', category_id: await categoryId(a.client, 'Fertilizante'), unit: 'kg', min_stock: 100, unit_cost: 11.5 })
     .select('id')
     .single()
 
@@ -363,6 +369,43 @@ async function main() {
   check('custo de manutencao na view', Number(ms.maintenance_cost), 850)
   check('litros abastecidos na view', Number(ms.fuel_liters), 80)
   check('manutencao ainda longe = ok', ms.due_level, 'ok')
+
+  // --------------------------------------- 5b. custo medio e baixa por maquina
+  console.log('\n5b. Custo medio ponderado e baixa de estoque por maquina')
+  const { data: diesel } = await a.client
+    .from('products')
+    .insert({ farm_id: farmA.id, name: 'Diesel S10', category_id: await categoryId(a.client, 'Combustível'), unit: 'L' })
+    .select('id')
+    .single()
+  await a.client.from('inventory_movements').insert({
+    farm_id: farmA.id, product_id: diesel.id, movement_type: 'entrada', quantity: 100, unit_cost: 6, total_cost: 600,
+  })
+  await a.client.from('inventory_movements').insert({
+    farm_id: farmA.id, product_id: diesel.id, movement_type: 'entrada', quantity: 100, unit_cost: 7, total_cost: 700,
+  })
+  let { data: dz } = await a.client.from('products').select('current_stock, unit_cost').eq('id', diesel.id).single()
+  check('custo medio ponderado (100 L a 6 + 100 L a 7)', Number(dz.unit_cost), 6.5)
+
+  const { error: fuelErr } = await a.client.from('machine_logs').insert({
+    farm_id: farmA.id, machine_id: tractor.id, log_type: 'abastecimento', log_date: '2026-09-22',
+    liters: 40, cost: 260, product_id: diesel.id,
+  })
+  check('abastecimento tirando do estoque', fuelErr ? fuelErr.message : 'ok', 'ok')
+  ;({ data: dz } = await a.client.from('products').select('current_stock, unit_cost').eq('id', diesel.id).single())
+  check('abastecimento baixa os litros do estoque', Number(dz.current_stock), 160)
+
+  // Produto de outra fazenda nao pode ser usado (trigger check_tenant_refs).
+  const { data: plotB } = await b.client
+    .from('plots').insert({ farm_id: farmB.id, code: 'B-01', area: 1, crop_id: crop.id }).select('id').single()
+  const { error: crossErr } = await b.client.from('applications').insert({
+    farm_id: farmB.id, plot_id: plotB.id, product_id: diesel.id, product_name: 'x',
+    status: 'realizada', application_date: '2026-09-22', total_quantity: 1,
+  })
+  checkTrue('B nao consegue usar produto da fazenda A', !!crossErr, crossErr ? '' : 'insercao aceita')
+  ;({ data: dz } = await a.client.from('products').select('current_stock').eq('id', diesel.id).single())
+  check('estoque de A intacto apos tentativa de B', Number(dz.current_stock), 160)
+  // O talhao de B so' existia para esta checagem (as de RLS contam talhoes de B).
+  await b.client.from('plots').delete().eq('id', plotB.id)
 
   // --------------------------------------- 5c. previsao x realizado e destinos
   console.log('\n5c. Previsao da safra e destinos da colheita')

@@ -1,4 +1,4 @@
-# Academia da Uva PRO
+# AGPROD
 
 **Gestão inteligente da pequena propriedade.** Controle sua propriedade, entenda seus
 números, produza melhor.

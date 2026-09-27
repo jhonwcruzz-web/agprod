@@ -7,7 +7,11 @@ import { area, date, kg, num, UNIT_LABEL } from '@/lib/format'
 import { PageHeader, EmptyState, Metric, MetricStrip, Section } from '@/components/ui/Layout'
 import { ButtonLink } from '@/components/ui/Button'
 import { Tabs } from '@/components/ui/Tabs'
-import { ProductionForm } from '@/components/forms/OperationForms'
+import { ProductionForm } from '@/components/forms/ProductionForm'
+import { FilterBar } from '@/components/ui/FilterBar'
+import { RowActions } from '@/components/ui/RowActions'
+import { byDate, eqIf, readFilters } from '@/lib/filters'
+import { closeLink, editLink } from '@/lib/url'
 import { AchievedBar, ForecastForm, type ForecastRow } from './ForecastForm'
 
 export const metadata: Metadata = { title: 'Produção' }
@@ -36,7 +40,7 @@ const tons = (kgValue: number) => `${num(kgValue / 1000, 1)} t`
 export default async function ProducaoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ aba?: string; novo?: string }>
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   const [ctx, sp] = await Promise.all([requireFarm(), searchParams])
   const supabase = await createClient()
@@ -55,7 +59,16 @@ export default async function ProducaoPage({
     .limit(300)
   if (season) recordsQuery = recordsQuery.eq('season_id', season.id)
 
-  const [options, records, forecast, perf] = await Promise.all([
+  // Lista da aba Colheita: mesma safra, com os filtros da barra.
+  const f = readFilters(sp)
+  let listQuery = supabase
+    .from('production_records')
+    .select('id, harvest_date, quantity, unit, quantity_kg, destination, team, plot_id, plots(code, name), varieties(name)', { count: 'exact' })
+    .eq('farm_id', ctx.farm.id)
+  if (season) listQuery = listQuery.eq('season_id', season.id)
+  listQuery = eqIf(byDate(listQuery, 'harvest_date', f), 'plot_id', f.talhao)
+
+  const [options, records, forecast, perf, list, editing] = await Promise.all([
     getFormOptions(ctx.farm.id),
     recordsQuery,
     season
@@ -70,7 +83,13 @@ export default async function ProducaoPage({
     season
       ? Promise.resolve({ data: null })
       : supabase.from('v_plot_performance').select('*').eq('farm_id', ctx.farm.id).order('code'),
+    listQuery.order('harvest_date', { ascending: false }).limit(1000),
+    sp.editar
+      ? supabase.from('production_records').select('*').eq('id', sp.editar).eq('farm_id', ctx.farm.id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ])
+  const listRows = list.data ?? []
+  const listTotal = list.count ?? listRows.length
 
   const rows = records.data ?? []
 
@@ -94,7 +113,10 @@ export default async function ProducaoPage({
         expected_t_ha: null,
       }))
 
-  const totalKg = rows.reduce((s, r) => s + Number(r.quantity_kg), 0)
+  // Total pela view (sem limite de linhas); a lista so' serve para exibir.
+  const totalKg = forecast.data
+    ? plots.reduce((s, p) => s + p.realized_kg, 0)
+    : rows.reduce((s, r) => s + Number(r.quantity_kg), 0)
   const totalArea = plots.reduce((s, p) => s + p.area, 0)
 
   // Previsao: so' conta o realizado dos talhoes que tem previsao, senao o
@@ -156,7 +178,17 @@ export default async function ProducaoPage({
           plots={options.plots}
           varieties={options.varieties}
           destinations={options.destinations}
-          closeHref="/producao"
+          closeHref={closeLink('/producao', sp)}
+        />
+      )}
+      {editing.data && (
+        <ProductionForm
+          key={editing.data.id}
+          plots={options.plots}
+          varieties={options.varieties}
+          destinations={options.destinations}
+          closeHref={closeLink('/producao', sp)}
+          initial={editing.data}
         />
       )}
 
@@ -283,45 +315,66 @@ export default async function ProducaoPage({
         ))}
 
       {tab === 'colheita' && (
-        <Section title={season ? `Colheitas da safra ${season.name}` : 'Todas as colheitas'}>
-          {rows.length === 0 ? (
-            <EmptyState
-              title="Nenhuma colheita registrada"
-              description="Registre a primeira colheita e a produção por talhão, por hectare e por variedade aparece na hora."
-              action={<ButtonLink href="/producao?novo=1">Registrar colheita</ButtonLink>}
-            />
-          ) : (
-            <ul className="divide-y divide-line">
-              {rows.map((r) => {
-                const plot = r.plots as { code: string; name: string | null } | null
-                return (
-                  <li key={r.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3">
-                    <span className="num w-20 shrink-0 text-sm text-text-muted">
-                      {date(r.harvest_date)}
-                    </span>
-                    <span className="num w-14 shrink-0 text-sm font-medium">
-                      {plot?.code ?? '—'}
-                    </span>
-                    <span className="num text-sm">
-                      {num(Number(r.quantity), 2)} {UNIT_LABEL[r.unit]}
-                    </span>
-                    {r.unit !== 'kg' && (
-                      <span className="num text-xs text-text-faint">
-                        = {kg(Number(r.quantity_kg))}
-                      </span>
-                    )}
-                    <span className="text-xs text-text-muted">
-                      {(r.varieties as { name: string } | null)?.name ?? ''}
-                    </span>
-                    {r.destination && (
-                      <span className="ml-auto text-xs text-text-faint">→ {r.destination}</span>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </Section>
+        <>
+          <FilterBar
+            exportType="colheitas"
+            selects={[{ param: 'talhao', label: 'Talhão', options: options.plots.map((p) => ({ value: p.id, label: p.code })) }]}
+          />
+          <Section
+            title={season ? `Colheitas da safra ${season.name}` : 'Todas as colheitas'}
+            description={listTotal > listRows.length ? `Mostrando ${listRows.length} de ${listTotal}.` : undefined}
+          >
+            {listRows.length === 0 ? (
+              <EmptyState
+                title="Nenhuma colheita no período"
+                description="Registre a primeira colheita e a produção por talhão, por hectare e por variedade aparece na hora."
+                action={<ButtonLink href="/producao?novo=1">Registrar colheita</ButtonLink>}
+              />
+            ) : (
+              <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+                <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+                  <colgroup>
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '20%' }} />
+                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '22%' }} />
+                    <col style={{ width: '9%' }} />
+                  </colgroup>
+                  <thead>
+                    <tr className="border-b border-line-strong text-left">
+                      {[['Data', ''], ['Talhão', ''], ['Variedade', ''], ['Quantidade', 'text-right'], ['Total', 'text-right'], ['Destino', 'pl-4'], ['', '']].map(
+                        ([h, cls], i) => (
+                          <th key={i} className={`pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-text-faint ${cls}`}>
+                            {h}
+                          </th>
+                        ),
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {listRows.map((r) => (
+                      <tr key={r.id} className="transition-colors hover:bg-bg-sunken/60">
+                        <td className="num py-2.5 text-text-muted">{date(r.harvest_date)}</td>
+                        <td className="num py-2.5 font-medium">{(r.plots as { code: string } | null)?.code ?? '—'}</td>
+                        <td className="truncate py-2.5 text-text-muted">{(r.varieties as { name: string } | null)?.name ?? '—'}</td>
+                        <td className="num py-2.5 text-right">
+                          {num(Number(r.quantity), 2)} {UNIT_LABEL[r.unit]}
+                        </td>
+                        <td className="num py-2.5 text-right font-medium">{kg(Number(r.quantity_kg))}</td>
+                        <td className="truncate py-2.5 pl-4 text-text-muted">{r.destination ?? '—'}</td>
+                        <td className="py-2 text-right">
+                          <RowActions id={r.id} kind="colheita" editHref={editLink('/producao', sp, r.id)} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Section>
+        </>
       )}
 
       {tab === 'talhoes' && (

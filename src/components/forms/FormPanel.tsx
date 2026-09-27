@@ -31,6 +31,7 @@ export function FormPanel({
   closeHref,
   children,
   submitLabel,
+  editId,
 }: {
   action: (state: ActionState, formData: FormData) => Promise<ActionState>
   title: string
@@ -38,26 +39,32 @@ export function FormPanel({
   closeHref: Route
   children: ReactNode
   submitLabel: string
+  /** Presente = editando esse registro (o formulario nao se limpa). */
+  editId?: string
 }) {
   const [state, formAction] = useActionState<ActionState, FormData>(action, {})
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
 
-  // Depois de salvar, limpa o formulario para o proximo lancamento — quem
-  // registra uma colheita costuma registrar varias seguidas.
+  // Novo lancamento: limpa o formulario para o proximo — quem registra uma
+  // colheita costuma registrar varias seguidas. Edicao: mantem os valores
+  // (sao exatamente o que acabou de ser salvo).
   useEffect(() => {
     if (state.message) {
-      formRef.current?.reset()
+      if (!editId) formRef.current?.reset()
       router.refresh()
     }
-  }, [state.message, router])
+  }, [state.message, router, editId])
 
   return (
     <form
       ref={formRef}
       action={formAction}
-      className="rounded-lg border border-line-strong bg-bg-raised p-5 sm:p-6"
+      className={`rounded-lg border bg-bg-raised p-5 sm:p-6 ${
+        editId ? 'border-accent' : 'border-line-strong'
+      }`}
     >
+      {editId && <input type="hidden" name="id" value={editId} />}
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold">{title}</h2>

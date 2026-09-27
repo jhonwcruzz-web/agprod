@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Logo } from '@/components/ui/Logo'
 import { redirect } from 'next/navigation'
 import { getFarmContext } from '@/lib/farm'
 import { getUser } from '@/lib/supabase/server'
@@ -24,10 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           href="/"
           className="flex h-14 shrink-0 items-center gap-2.5 border-b border-line px-4"
         >
-          <span className="flex size-7 items-center justify-center rounded-md bg-vine-700 text-[11px] font-bold text-white">
-            AU
-          </span>
-          <span className="text-sm font-semibold tracking-tight">Academia da Uva</span>
+          <Logo />
         </Link>
         <Sidebar />
       </aside>

@@ -5,12 +5,12 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: {
-    default: 'Academia da Uva PRO',
-    template: '%s · Academia da Uva PRO',
+    default: 'AGPROD',
+    template: '%s · AGPROD',
   },
   description:
     'Controle sua propriedade. Entenda seus números. Produza melhor. Gestão simples para o pequeno produtor de uva e manga.',
-  applicationName: 'Academia da Uva PRO',
+  applicationName: 'AGPROD',
   formatDetection: { telephone: false },
 }
 

@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import type { Route } from 'next'
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { requireFarm } from '@/lib/farm'
+import { FEATURES } from '@/lib/config'
 import { createClient } from '@/lib/supabase/server'
 import { getFormOptions } from '@/lib/queries/options'
 import { date, money, num, relativeDay, sinceDays } from '@/lib/format'
@@ -15,7 +17,7 @@ import {
 } from '@/components/ui/Layout'
 import { ButtonLink } from '@/components/ui/Button'
 import { Tabs } from '@/components/ui/Tabs'
-import { IrrigationForm } from '@/components/forms/OperationForms'
+import { IrrigationForm } from '@/components/forms/IrrigationForm'
 
 export const metadata: Metadata = { title: 'Irrigação' }
 
@@ -29,6 +31,8 @@ export default async function IrrigacaoPage({
 }: {
   searchParams: Promise<{ aba?: string; novo?: string }>
 }) {
+  // Modulo oculto a pedido do produtor (ver FEATURES em lib/config.ts).
+  if (!FEATURES.irrigation) notFound()
   const [ctx, sp] = await Promise.all([requireFarm(), searchParams])
   const supabase = await createClient()
   const tab = sp.aba ?? 'situacao'

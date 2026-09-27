@@ -211,6 +211,12 @@ async function reset() {
 
   // ---------- safras
   const seasons = await must(db.from('seasons').select('*').eq('farm_id', FARM), 'seasons')
+  // categorias de estoque padrao (tabela product_categories)
+  const cats = await must(db.from('product_categories').select('id, name').is('farm_id', null), 'categorias')
+  const CATEGORY_ID = {
+    defensivo: cats.find((c) => c.name === 'Defensivo').id,
+    fertilizante: cats.find((c) => c.name === 'Fertilizante').id,
+  }
   let s1 = seasons.find((s) => s.name === '2026.1')
   const s1Patch = { start_date: '2025-10-01', end_date: '2026-06-30', is_active: true, notes: 'Safra do primeiro semestre' }
   if (s1) await must(db.from('seasons').update(s1Patch).eq('id', s1.id), 'season 1')
@@ -580,7 +586,7 @@ async function reset() {
     key,
     farm_id: FARM,
     name: p.name,
-    category: p.category,
+    category_id: CATEGORY_ID[p.category],
     unit: p.unit,
     active_ingredient: p.ai ?? null,
     unit_cost: p.cost,

@@ -249,6 +249,8 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          machine_id: string | null
+          implement_id: string | null
         }
         Insert: {
           id?: string
@@ -274,6 +276,8 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          machine_id?: string | null
+          implement_id?: string | null
         }
         Update: {
           id?: string
@@ -299,6 +303,8 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          machine_id?: string | null
+          implement_id?: string | null
         }
         Relationships: [
           {
@@ -320,6 +326,20 @@ export type Database = {
             columns: ['farm_id']
             isOneToOne: false
             referencedRelation: 'farms'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'applications_implement_id_fkey'
+            columns: ['implement_id']
+            isOneToOne: false
+            referencedRelation: 'machines'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'applications_machine_id_fkey'
+            columns: ['machine_id']
+            isOneToOne: false
+            referencedRelation: 'machines'
             referencedColumns: ['id']
           },
           {
@@ -548,13 +568,48 @@ export type Database = {
         }
         Relationships: []
       }
+      expense_categories: {
+        Row: {
+          id: string
+          farm_id: string | null
+          code: string
+          name: string
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          farm_id?: string | null
+          code: string
+          name: string
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          farm_id?: string | null
+          code?: string
+          name?: string
+          sort_order?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'expense_categories_farm_id_fkey'
+            columns: ['farm_id']
+            isOneToOne: false
+            referencedRelation: 'farms'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       expenses: {
         Row: {
           id: string
           farm_id: string
           plot_id: string | null
           season_id: string | null
-          category: Database['public']['Enums']['expense_category']
+          category: string
           description: string
           amount: number
           expense_date: string
@@ -576,7 +631,7 @@ export type Database = {
           farm_id: string
           plot_id?: string | null
           season_id?: string | null
-          category?: Database['public']['Enums']['expense_category']
+          category?: string
           description: string
           amount: number
           expense_date?: string
@@ -598,7 +653,7 @@ export type Database = {
           farm_id?: string
           plot_id?: string | null
           season_id?: string | null
-          category?: Database['public']['Enums']['expense_category']
+          category?: string
           description?: string
           amount?: number
           expense_date?: string
@@ -787,6 +842,8 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          machine_id: string | null
+          implement_id: string | null
         }
         Insert: {
           id?: string
@@ -808,6 +865,8 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          machine_id?: string | null
+          implement_id?: string | null
         }
         Update: {
           id?: string
@@ -829,6 +888,8 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          machine_id?: string | null
+          implement_id?: string | null
         }
         Relationships: [
           {
@@ -843,6 +904,20 @@ export type Database = {
             columns: ['farm_id']
             isOneToOne: false
             referencedRelation: 'farms'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'fertilizations_implement_id_fkey'
+            columns: ['implement_id']
+            isOneToOne: false
+            referencedRelation: 'machines'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'fertilizations_machine_id_fkey'
+            columns: ['machine_id']
+            isOneToOne: false
+            referencedRelation: 'machines'
             referencedColumns: ['id']
           },
           {
@@ -1067,6 +1142,8 @@ export type Database = {
           notes: string | null
           created_by: string | null
           created_at: string
+          product_id: string | null
+          product_quantity: number | null
         }
         Insert: {
           id?: string
@@ -1087,6 +1164,8 @@ export type Database = {
           notes?: string | null
           created_by?: string | null
           created_at?: string
+          product_id?: string | null
+          product_quantity?: number | null
         }
         Update: {
           id?: string
@@ -1107,6 +1186,8 @@ export type Database = {
           notes?: string | null
           created_by?: string | null
           created_at?: string
+          product_id?: string | null
+          product_quantity?: number | null
         }
         Relationships: [
           {
@@ -1135,6 +1216,13 @@ export type Database = {
             columns: ['plot_id']
             isOneToOne: false
             referencedRelation: 'plots'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'machine_logs_product_id_fkey'
+            columns: ['product_id']
+            isOneToOne: false
+            referencedRelation: 'products'
             referencedColumns: ['id']
           },
           {
@@ -1373,6 +1461,41 @@ export type Database = {
           }
         ]
       }
+      product_categories: {
+        Row: {
+          id: string
+          farm_id: string | null
+          name: string
+          expense_category: string
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          farm_id?: string | null
+          name: string
+          expense_category?: string
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          farm_id?: string | null
+          name?: string
+          expense_category?: string
+          sort_order?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'product_categories_farm_id_fkey'
+            columns: ['farm_id']
+            isOneToOne: false
+            referencedRelation: 'farms'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       production_records: {
         Row: {
           id: string
@@ -1491,7 +1614,6 @@ export type Database = {
           id: string
           farm_id: string
           name: string
-          category: Database['public']['Enums']['product_category']
           unit: Database['public']['Enums']['quantity_unit']
           active_ingredient: string | null
           current_stock: number
@@ -1502,12 +1624,12 @@ export type Database = {
           is_active: boolean
           created_at: string
           updated_at: string
+          category_id: string
         }
         Insert: {
           id?: string
           farm_id: string
           name: string
-          category?: Database['public']['Enums']['product_category']
           unit?: Database['public']['Enums']['quantity_unit']
           active_ingredient?: string | null
           current_stock?: number
@@ -1518,12 +1640,12 @@ export type Database = {
           is_active?: boolean
           created_at?: string
           updated_at?: string
+          category_id: string
         }
         Update: {
           id?: string
           farm_id?: string
           name?: string
-          category?: Database['public']['Enums']['product_category']
           unit?: Database['public']['Enums']['quantity_unit']
           active_ingredient?: string | null
           current_stock?: number
@@ -1534,8 +1656,16 @@ export type Database = {
           is_active?: boolean
           created_at?: string
           updated_at?: string
+          category_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: 'products_category_id_fkey'
+            columns: ['category_id']
+            isOneToOne: false
+            referencedRelation: 'product_categories'
+            referencedColumns: ['id']
+          },
           {
             foreignKeyName: 'products_farm_id_fkey'
             columns: ['farm_id']
@@ -1932,7 +2062,7 @@ export type Database = {
         Row: {
           farm_id: string | null
           season_id: string | null
-          category: Database['public']['Enums']['expense_category'] | null
+          category: string | null
           is_production_cost: boolean | null
           unallocated: boolean | null
           entries: number | null
@@ -2008,7 +2138,7 @@ export type Database = {
           farm_id: string | null
           plot_id: string | null
           season_id: string | null
-          category: Database['public']['Enums']['expense_category'] | null
+          category: string | null
           amount: number | null
         }
         Relationships: []
@@ -2082,7 +2212,8 @@ export type Database = {
           product_id: string | null
           farm_id: string | null
           name: string | null
-          category: Database['public']['Enums']['product_category'] | null
+          category: string | null
+          category_id: string | null
           unit: Database['public']['Enums']['quantity_unit'] | null
           current_stock: number | null
           min_stock: number | null
@@ -2099,7 +2230,6 @@ export type Database = {
     Enums: {
       alert_severity: 'info' | 'atencao' | 'critico'
       area_unit: 'ha' | 'm2' | 'alqueire'
-      expense_category: 'mao_de_obra' | 'adubacao' | 'fitossanidade' | 'irrigacao' | 'combustivel' | 'energia' | 'manutencao' | 'maquinas' | 'embalagens' | 'frete' | 'servicos' | 'outros'
       farm_role: 'owner' | 'admin' | 'operator' | 'viewer'
       machine_class: 'maquina' | 'implemento'
       machine_log_type: 'preventiva' | 'corretiva' | 'revisao' | 'abastecimento'
@@ -2109,7 +2239,6 @@ export type Database = {
       operation_status: 'programada' | 'realizada' | 'pendente' | 'cancelada'
       payment_status: 'pendente' | 'parcial' | 'pago'
       plot_status: 'producao' | 'formacao' | 'repouso' | 'inativo'
-      product_category: 'fertilizante' | 'defensivo' | 'corretivo' | 'material' | 'embalagem' | 'combustivel' | 'outro'
       quantity_unit: 'kg' | 't' | 'caixa' | 'unidade' | 'L' | 'g' | 'mL' | 'saco' | 'dose'
     }
     CompositeTypes: {
