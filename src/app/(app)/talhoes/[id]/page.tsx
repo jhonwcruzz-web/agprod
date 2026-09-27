@@ -4,6 +4,7 @@ import type { Metadata, Route } from 'next'
 import { ArrowLeftIcon, PencilSimpleIcon } from '@phosphor-icons/react/dist/ssr'
 import { requireFarm } from '@/lib/farm'
 import { createClient } from '@/lib/supabase/server'
+import { chartColor } from '@/lib/chart'
 import { FEATURES } from '@/lib/config'
 import { getPlotPerformance } from '@/lib/queries/plot-performance'
 import { getExpenseCategoryNames } from '@/lib/queries/options'
@@ -562,19 +563,22 @@ async function CustosTab({
     <div className="flex flex-col gap-8">
       <Section title="Custo por categoria">
         <ul className="divide-y divide-line">
-          {sorted.map(([cat, amount]) => {
+          {sorted.map(([cat, amount], i) => {
             const share = (amount / total) * 100
             return (
               <li key={cat} className="py-3">
                 <div className="flex items-baseline justify-between gap-4 text-sm">
-                  <span>{catNames.get(cat) ?? cat}</span>
+                  <span className="flex items-center gap-2">
+                    <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: chartColor(i) }} />
+                    {catNames.get(cat) ?? cat}
+                  </span>
                   <span className="num font-medium">{money(amount)}</span>
                 </div>
                 {/* Barra proporcional: comparar categorias sem precisar de grafico. */}
                 <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-bg-sunken">
                   <div
-                    className="h-full rounded-full bg-accent"
-                    style={{ width: `${share.toFixed(1)}%` }}
+                    className="h-full rounded-full"
+                    style={{ width: `${share.toFixed(1)}%`, background: chartColor(i) }}
                   />
                 </div>
               </li>

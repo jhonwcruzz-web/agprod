@@ -1,4 +1,6 @@
 'use client'
+import { ThemeSwitcher } from '@/components/ui/ThemeSwitcher'
+import type { Accent, Theme } from '@/lib/theme'
 
 import Link from 'next/link'
 import { useRef, useState, useTransition } from 'react'
@@ -120,7 +122,7 @@ function QuickRegister() {
   )
 }
 
-function UserMenu({ name }: { name: string }) {
+function UserMenu({ name, theme, accent }: { name: string; theme: Theme; accent: Accent }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -140,8 +142,12 @@ function UserMenu({ name }: { name: string }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-lg border border-line bg-bg-raised py-1 shadow-[0_8px_28px_-10px_rgba(0,0,0,0.3)]">
+        <div className="absolute right-0 top-full z-50 mt-1 w-72 overflow-hidden rounded-lg border border-line bg-bg-raised py-1 shadow-[0_8px_28px_-10px_rgba(0,0,0,0.3)]">
           <p className="truncate border-b border-line px-3 py-2 text-sm font-medium">{name}</p>
+          <div className="border-b border-line px-3 py-3">
+            <p className="pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-text-faint">Aparência</p>
+            <ThemeSwitcher initialTheme={theme} initialAccent={accent} />
+          </div>
           <Link
             href="/conta"
             onClick={() => setOpen(false)}
@@ -169,12 +175,16 @@ export function ContextBar({
   seasons,
   seasonId,
   userName,
+  theme,
+  accent,
 }: {
   farms: Option[]
   farmId: string
   seasons: Option[]
   seasonId?: string
   userName: string
+  theme: Theme
+  accent: Accent
 }) {
   const [, start] = useTransition()
 
@@ -225,7 +235,7 @@ export function ContextBar({
 
       <div className="ml-auto flex items-center gap-2">
         <QuickRegister />
-        <UserMenu name={userName} />
+        <UserMenu name={userName} theme={theme} accent={accent} />
       </div>
     </header>
   )

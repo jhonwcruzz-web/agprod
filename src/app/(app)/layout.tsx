@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { Logo } from '@/components/ui/Logo'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
+import { ACCENT_COOKIE, THEME_COOKIE, parseAccent, parseTheme } from '@/lib/theme'
 import { getFarmContext } from '@/lib/farm'
 import { getUser } from '@/lib/supabase/server'
 import { ContextBar } from '@/components/shell/ContextBar'
@@ -15,6 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Sem propriedade cadastrada, o unico caminho e' o onboarding.
   if (!ctx) redirect('/primeiros-passos')
 
+  const jar = await cookies()
   const userName =
     (user.user_metadata?.full_name as string | undefined) ?? user.email?.split('@')[0] ?? 'Você'
 
@@ -41,6 +44,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           seasons={ctx.seasons.map((s) => ({ id: s.id, label: s.name }))}
           seasonId={ctx.season?.id}
           userName={userName}
+          theme={parseTheme(jar.get(THEME_COOKIE)?.value)}
+          accent={parseAccent(jar.get(ACCENT_COOKIE)?.value)}
         />
 
         {/* pb generoso no mobile para a barra inferior nao cobrir conteudo.

@@ -4,8 +4,9 @@
    Sistema de design — AGPROD
 
    Direcao: painel de controle da propriedade, nao ERP. Base neutra quente
-   (terra), um unico acento (verde de vinhedo, dessaturado), numeros em
-   monoespacada. Sem roxo/azul de IA, sem preto puro, sem glow.
+   (terra), um acento por vez (vinhedo por padrao; uva, manga ou ceu a
+   escolha do produtor), numeros em monoespacada. Graficos usam as 6
+   cores --chart-*. Sem roxo/azul de IA, sem preto puro, sem glow.
    ===================================================================== */
 
 @theme {
@@ -34,13 +35,59 @@
   --color-vine-800: #273e2d;
   --color-vine-900: #1f3124;
 
+  /* --- uva: vinho da fruta madura -------------------------------- */
+  --color-grape-50:  #f7f1f4;
+  --color-grape-100: #ecdde5;
+  --color-grape-200: #d9bccb;
+  --color-grape-300: #bf93aa;
+  --color-grape-400: #a06a86;
+  --color-grape-500: #84506b;
+  --color-grape-600: #6c3f57;
+  --color-grape-700: #573347;
+  --color-grape-800: #43283a;
+  --color-grape-900: #321e2b;
+
+  /* --- manga: ambar da polpa --------------------------------------- */
+  --color-mango-50:  #fdf5ec;
+  --color-mango-100: #fae6cf;
+  --color-mango-200: #f4cb9c;
+  --color-mango-300: #eaa865;
+  --color-mango-400: #dd8a3c;
+  --color-mango-500: #c47128;
+  --color-mango-600: #a0591f;
+  --color-mango-700: #7f461b;
+  --color-mango-800: #613618;
+  --color-mango-900: #482914;
+
+  /* --- ceu: agua de irrigacao, azul-petroleo (nao o azul de IA) ---- */
+  --color-sky-50:  #eef5f6;
+  --color-sky-100: #d6e8eb;
+  --color-sky-200: #aed0d6;
+  --color-sky-300: #7fb1ba;
+  --color-sky-400: #56919c;
+  --color-sky-500: #3f7682;
+  --color-sky-600: #335f69;
+  --color-sky-700: #2b4d56;
+  --color-sky-800: #243f46;
+  --color-sky-900: #1c3137;
+
   /* --- semanticas: atencao e alerta (terrosas, nao neon) ----------- */
+  --color-sun-50:   #fdf6e7;
+  --color-sun-100:  #f9e8c2;
+  --color-sun-200:  #f1d08a;
+  --color-sun-300:  #e6ba5f;
   --color-sun-400:  #d9a441;
   --color-sun-500:  #bf8a2c;
   --color-sun-600:  #9a6d1f;
+  --color-sun-700:  #7a561a;
+  --color-clay-50:  #fbf0ec;
+  --color-clay-100: #f5dcd2;
+  --color-clay-200: #ebb9a5;
+  --color-clay-300: #db9175;
   --color-clay-400: #c96f4f;
   --color-clay-500: #ad5539;
   --color-clay-600: #8d4229;
+  --color-clay-700: #6f3421;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
@@ -48,8 +95,44 @@
   --radius-none: 0px;
 }
 
+/* --- cor de destaque escolhida pelo produtor ----------------------
+   data-accent no <html>: vine (padrao), grape, mango, sky.            */
+:root {
+  --acc-50:  var(--color-vine-50);
+  --acc-300: var(--color-vine-300);
+  --acc-400: var(--color-vine-400);
+  --acc-600: var(--color-vine-600);
+  --acc-700: var(--color-vine-700);
+  --acc-dark-soft: #1b2a1e;
+}
+:root[data-accent='grape'] {
+  --acc-50:  var(--color-grape-50);
+  --acc-300: var(--color-grape-300);
+  --acc-400: var(--color-grape-400);
+  --acc-600: var(--color-grape-600);
+  --acc-700: var(--color-grape-700);
+  --acc-dark-soft: #2a1b24;
+}
+:root[data-accent='mango'] {
+  --acc-50:  var(--color-mango-50);
+  --acc-300: var(--color-mango-300);
+  --acc-400: var(--color-mango-400);
+  --acc-600: var(--color-mango-600);
+  --acc-700: var(--color-mango-700);
+  --acc-dark-soft: #2c1f13;
+}
+:root[data-accent='sky'] {
+  --acc-50:  var(--color-sky-50);
+  --acc-300: var(--color-sky-300);
+  --acc-400: var(--color-sky-400);
+  --acc-600: var(--color-sky-600);
+  --acc-700: var(--color-sky-700);
+  --acc-dark-soft: #16272b;
+}
+
 /* --- tokens semanticos: claro ------------------------------------- */
 :root {
+  color-scheme: light;
   --bg:            var(--color-sand-50);
   --bg-raised:     #ffffff;
   --bg-sunken:     var(--color-sand-100);
@@ -58,19 +141,32 @@
   --text:          var(--color-sand-900);
   --text-muted:    var(--color-sand-600);
   --text-faint:    var(--color-sand-500);
-  --accent:        var(--color-vine-600);
-  --accent-soft:   var(--color-vine-50);
-  --accent-text:   var(--color-vine-700);
+  --accent:        var(--acc-600);
+  --accent-soft:   var(--acc-50);
+  --accent-text:   var(--acc-700);
   --warn:          var(--color-sun-600);
-  --warn-soft:     #fdf6e7;
+  --warn-soft:     var(--color-sun-50);
   --danger:        var(--color-clay-600);
-  --danger-soft:   #fbf0ec;
+  --danger-soft:   var(--color-clay-50);
+  --info:          var(--color-sky-600);
+  --info-soft:     var(--color-sky-50);
   --on-accent:     #ffffff;
+
+  /* Graficos: 6 cores distinguiveis entre si, na mesma familia terrosa. */
+  --chart-1: var(--color-vine-500);
+  --chart-2: var(--color-mango-400);
+  --chart-3: var(--color-sky-500);
+  --chart-4: var(--color-grape-400);
+  --chart-5: var(--color-sun-400);
+  --chart-6: var(--color-clay-400);
 }
 
-/* --- tokens semanticos: escuro ------------------------------------ */
+/* --- tokens semanticos: escuro ------------------------------------
+   Vale quando o sistema esta escuro e o produtor nao escolheu "claro",
+   ou quando escolheu "escuro" explicitamente.                         */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
+    color-scheme: dark;
     --bg:          var(--color-sand-950);
     --bg-raised:   var(--color-sand-900);
     --bg-sunken:   #100f0c;
@@ -79,18 +175,27 @@
     --text:        var(--color-sand-100);
     --text-muted:  var(--color-sand-400);
     --text-faint:  var(--color-sand-500);
-    --accent:      var(--color-vine-400);
-    --accent-soft: #1b2a1e;
-    --accent-text: var(--color-vine-300);
+    --accent:      var(--acc-400);
+    --accent-soft: var(--acc-dark-soft);
+    --accent-text: var(--acc-300);
     --warn:        var(--color-sun-400);
     --warn-soft:   #2a2215;
     --danger:      var(--color-clay-400);
     --danger-soft: #2b1a15;
+    --info:        var(--color-sky-300);
+    --info-soft:   #16272b;
     --on-accent:   var(--color-sand-950);
+    --chart-1: var(--color-vine-400);
+    --chart-2: var(--color-mango-300);
+    --chart-3: var(--color-sky-300);
+    --chart-4: var(--color-grape-300);
+    --chart-5: var(--color-sun-300);
+    --chart-6: var(--color-clay-300);
   }
 }
 
 :root[data-theme='dark'] {
+  color-scheme: dark;
   --bg:          var(--color-sand-950);
   --bg-raised:   var(--color-sand-900);
   --bg-sunken:   #100f0c;
@@ -99,14 +204,22 @@
   --text:        var(--color-sand-100);
   --text-muted:  var(--color-sand-400);
   --text-faint:  var(--color-sand-500);
-  --accent:      var(--color-vine-400);
-  --accent-soft: #1b2a1e;
-  --accent-text: var(--color-vine-300);
+  --accent:      var(--acc-400);
+  --accent-soft: var(--acc-dark-soft);
+  --accent-text: var(--acc-300);
   --warn:        var(--color-sun-400);
   --warn-soft:   #2a2215;
   --danger:      var(--color-clay-400);
   --danger-soft: #2b1a15;
+  --info:        var(--color-sky-300);
+  --info-soft:   #16272b;
   --on-accent:   var(--color-sand-950);
+  --chart-1: var(--color-vine-400);
+  --chart-2: var(--color-mango-300);
+  --chart-3: var(--color-sky-300);
+  --chart-4: var(--color-grape-300);
+  --chart-5: var(--color-sun-300);
+  --chart-6: var(--color-clay-300);
 }
 
 @theme inline {
@@ -125,7 +238,15 @@
   --color-warn-soft: var(--warn-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
   --color-on-accent: var(--on-accent);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
 }
 
 @layer base {
@@ -139,6 +260,7 @@
 
   body {
     background-color: var(--bg);
+    transition: background-color 200ms ease, color 200ms ease;
     color: var(--text);
     font-family: var(--font-sans);
     /* respiro para a barra inferior no mobile */

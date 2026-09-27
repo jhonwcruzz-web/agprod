@@ -62,6 +62,6 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Tudo, menos estaticos e imagens — esses nao precisam de sessao.
-    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon|manifest.webmanifest|sw.js|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

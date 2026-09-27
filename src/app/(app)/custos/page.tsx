@@ -3,6 +3,7 @@ import type { Route } from 'next'
 import type { Metadata } from 'next'
 import { requireFarm } from '@/lib/farm'
 import { createClient } from '@/lib/supabase/server'
+import { chartColor } from '@/lib/chart'
 import { getExpenseCategoryNames, getFormOptions } from '@/lib/queries/options'
 import { getPlotPerformance } from '@/lib/queries/plot-performance'
 import { date, kg, money, num } from '@/lib/format'
@@ -151,15 +152,31 @@ export default async function CustosPage({
                 action={<ButtonLink href="/custos?novo=1">Registrar despesa</ButtonLink>}
               />
             ) : (
+              <>
+              {/* Composicao do custo numa barra so', na ordem da lista abaixo. */}
+              <div className="mb-2 flex h-2.5 w-full overflow-hidden rounded-full bg-bg-sunken">
+                {[...byCategory.entries()]
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([cat, amount], i) => (
+                    <div
+                      key={cat}
+                      title={`${catName(cat)}: ${money(amount)}`}
+                      style={{ width: `${((amount / productionCost) * 100).toFixed(2)}%`, background: chartColor(i) }}
+                    />
+                  ))}
+              </div>
               <ul className="divide-y divide-line">
                 {[...byCategory.entries()]
                   .sort((a, b) => b[1] - a[1])
-                  .map(([cat, amount]) => {
+                  .map(([cat, amount], i) => {
                     const share = (amount / productionCost) * 100
                     return (
                       <li key={cat} className="py-3">
                         <div className="flex items-baseline justify-between gap-4 text-sm">
-                          <span>{catName(cat)}</span>
+                          <span className="flex items-center gap-2">
+                            <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: chartColor(i) }} />
+                            {catName(cat)}
+                          </span>
                           <span className="num font-medium">{money(amount)}</span>
                           <span className="num w-12 shrink-0 text-right text-xs text-text-faint">
                             {share.toFixed(0)}%
@@ -167,14 +184,15 @@ export default async function CustosPage({
                         </div>
                         <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-bg-sunken">
                           <div
-                            className="h-full rounded-full bg-accent"
-                            style={{ width: `${share.toFixed(1)}%` }}
+                            className="h-full rounded-full"
+                            style={{ width: `${share.toFixed(1)}%`, background: chartColor(i) }}
                           />
                         </div>
                       </li>
                     )
                   })}
               </ul>
+              </>
             )}
           </Section>
 

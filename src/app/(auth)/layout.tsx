@@ -1,4 +1,7 @@
 import type { ReactNode } from 'react'
+import { cookies } from 'next/headers'
+import { ACCENT_COOKIE, THEME_COOKIE, parseAccent, parseTheme } from '@/lib/theme'
+import { ThemeSwitcher } from '@/components/ui/ThemeSwitcher'
 import { APP_TAGLINE } from '@/lib/config'
 import { Logo } from '@/components/ui/Logo'
 
@@ -7,11 +10,21 @@ import { Logo } from '@/components/ui/Logo'
  * formulario a' esquerda, a' direita uma amostra do que o produtor ve
  * depois de entrar — o numero que importa, nao uma ilustracao generica.
  */
-export default function AuthLayout({ children }: { children: ReactNode }) {
+export default async function AuthLayout({ children }: { children: ReactNode }) {
+  const jar = await cookies()
   return (
     <div className="grid min-h-[100dvh] bg-bg lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <main className="flex flex-col px-6 py-8 sm:px-10">
-        <Logo />
+        <div className="flex items-center justify-between gap-4">
+          <Logo />
+          <div className="w-56">
+            <ThemeSwitcher
+              initialTheme={parseTheme(jar.get(THEME_COOKIE)?.value)}
+              initialAccent={parseAccent(jar.get(ACCENT_COOKIE)?.value)}
+              showAccent={false}
+            />
+          </div>
+        </div>
         <div className="flex flex-1 items-center justify-center py-10">
           <div className="w-full max-w-[380px]">{children}</div>
         </div>
