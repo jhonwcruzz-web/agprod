@@ -8,7 +8,7 @@
  *     / plantas por ha                      -> kg por planta
  *     / peso do cacho                       -> cachos por planta
  *     / cachos por broto fertil             -> brotos ferteis por planta
- *     / (brotacao x fertilidade das gemas)  -> gemas por planta
+ *     / (brotacao x fertilidade x viaveis)  -> gemas por planta
  *     / saidas (bracos) por planta          -> gemas por saida
  *     = varas por saida x gemas por vara    -> opcoes de poda
  *
@@ -28,6 +28,7 @@ export type SimInput = {
   budFertilityPct: number // % das gemas que trazem cacho
   budBreakPct: number // % das gemas que brotam
   bunchesPerShoot: number // cachos deixados por broto fertil (apos raleio)
+  deadBudsPct: number // gemas mortas/danificadas (acaro), % — saem da conta
 }
 
 export const SIM_DEFAULTS: SimInput = {
@@ -41,6 +42,7 @@ export const SIM_DEFAULTS: SimInput = {
   budFertilityPct: 40,
   budBreakPct: 85,
   bunchesPerShoot: 1,
+  deadBudsPct: 0,
 }
 
 export type PruneOption = {
@@ -92,6 +94,7 @@ export function simulate(i: SimInput): SimResult {
   if (!(i.budFertilityPct > 0 && i.budFertilityPct <= 100)) errors.push('Fertilidade das gemas entre 1 e 100%.')
   if (!(i.budBreakPct > 0 && i.budBreakPct <= 100)) errors.push('Brotação entre 1 e 100%.')
   if (!(i.bunchesPerShoot > 0)) errors.push('Informe quantos cachos ficam por broto.')
+  if (!(i.deadBudsPct >= 0 && i.deadBudsPct < 100)) errors.push('Gemas mortas/danificadas entre 0 e 99%.')
   if (errors.length) return { ok: false, errors }
 
   const areaPerPlant = i.rowSpacingM * i.plantSpacingM // m2
@@ -101,13 +104,15 @@ export function simulate(i: SimInput): SimResult {
   const bunchKg = i.bunchWeightG / 1000
   const bunchesPerPlant = kgPerPlant / bunchKg
   const fertileShootsPerPlant = bunchesPerPlant / i.bunchesPerShoot
-  const budsPerPlant = fertileShootsPerPlant / (pct(i.budBreakPct) * pct(i.budFertilityPct))
+  // Das gemas deixadas na poda: tira as mortas/danificadas, depois brotacao e fertilidade.
+  const budYield = (1 - pct(i.deadBudsPct)) * pct(i.budBreakPct) * pct(i.budFertilityPct)
+  const budsPerPlant = fertileShootsPerPlant / budYield
   const budsPerArm = budsPerPlant / i.armsPerPlant
 
   // Conferencia no sentido inverso: da poda ate' a tonelada.
   const forward = (budsPerCane: number, canesPerArm: number): PruneOption => {
     const budsP = budsPerCane * canesPerArm * i.armsPerPlant
-    const bunchesP = budsP * pct(i.budBreakPct) * pct(i.budFertilityPct) * i.bunchesPerShoot
+    const bunchesP = budsP * budYield * i.bunchesPerShoot
     const gross = (bunchesP * bunchKg * plantsPerHa) / 1000
     const commercial = gross * (1 - pct(i.lossPct))
     return {
@@ -123,12 +128,14 @@ export function simulate(i: SimInput): SimResult {
   }
   const options = BUDS_PER_CANE.map((g) => forward(g, Math.max(1, Math.ceil(budsPerArm / g - 1e-9))))
 
-  // Recomendada: a que bate a meta com a menor sobra; no empate, mais
-  // gemas por vara (menos varas para amarrar e conduzir).
+  // Recomendada: entre as que batem a meta com pouca sobra (ate' 10 pontos
+  // acima da mais justa), a de MENOS varas — menos vara para amarrar,
+  // conduzir e ralear. No empate, a mais justa.
+  const ok = options.filter((o) => o.marginPct >= -0.5)
+  const tightest = Math.min(...ok.map((o) => o.marginPct))
   const recommended =
-    [...options]
-      .filter((o) => o.marginPct >= -0.5)
-      .sort((a, b) => a.marginPct - b.marginPct || b.budsPerCane - a.budsPerCane)[0] ?? null
+    ok.filter((o) => o.marginPct <= tightest + 10).sort((a, b) => a.canesPerArm - b.canesPerArm || a.marginPct - b.marginPct)[0] ??
+    null
 
   // --- alertas de consultor (faixas de referencia, nao regras fixas)
   const warnings: string[] = []
@@ -143,9 +150,11 @@ export function simulate(i: SimInput): SimResult {
     warnings.push('Mais de 1,5 cacho por broto costuma comprometer tamanho e cor. Em uva de mesa o comum é deixar 1 cacho por broto.')
   if (i.budFertilityPct < 30)
     warnings.push('Fertilidade abaixo de 30%: confirme com a análise de gemas antes da poda — com gemas pouco férteis, vara mais longa ajuda.')
+  if (i.deadBudsPct > 15)
+    warnings.push(`${i.deadBudsPct.toFixed(0)}% de gemas mortas ou danificadas é alto: vale investigar ácaro da gema e o manejo pós-colheita.`)
   if (i.budBreakPct < 70)
     warnings.push('Brotação abaixo de 70%: vale revisar a quebra de dormência (cianamida) e o estado das gemas.')
-  if (budsPerArm / 4 > 8)
+  if (!recommended || recommended.canesPerArm > 8)
     warnings.push('Mesmo com varas curtas seriam muitas varas por saída: a planta pode ficar sobrecarregada. Considere mais saídas por planta ou uma meta menor.')
   if (berriesPerBunch > 150)
     warnings.push(`${Math.round(berriesPerBunch)} bagas por cacho é muito para uva de mesa: o cacho fica compacto. Confira o peso do cacho e o da baga.`)

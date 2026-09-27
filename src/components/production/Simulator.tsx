@@ -59,6 +59,12 @@ const GROUPS: { title: string; fields: { key: Key; label: string; unit: string; 
     fields: [
       { key: 'budFertilityPct', label: 'Fertilidade das gemas', unit: '%', hint: 'Da análise de gemas: 40% = em cada 10 gemas, 4 trazem cacho.' },
       { key: 'budBreakPct', label: 'Brotação', unit: '%', hint: 'Das gemas deixadas na poda, quantas brotam. Com boa quebra de dormência, 80 a 90%.' },
+      {
+        key: 'deadBudsPct',
+        label: 'Gemas mortas / danificadas (opcional)',
+        unit: '%',
+        hint: 'Da análise de gemas: mortas + atacadas por ácaro. Essas gemas saem da conta. Deixe 0 se não souber.',
+      },
     ],
   },
 ]
@@ -194,7 +200,11 @@ export function Simulator({ plots, seasonName }: { plots: SimPlot[]; seasonName:
                   ['Cachos por planta', num(Math.ceil(r.bunchesPerPlant - 1e-9)), `cachos de ${num(input.bunchWeightG)} g`],
                   ['Cachos por saída', num(r.bunchesPerArm, 1), `${num(input.armsPerPlant)} saídas por planta`],
                   ['Brotos férteis por planta', num(Math.ceil(r.fertileShootsPerPlant - 1e-9)), `${num(input.bunchesPerShoot, 1)} cacho por broto`],
-                  ['Gemas por planta', num(Math.ceil(r.budsPerPlant - 1e-9)), `${num(input.budBreakPct)}% brotam × ${num(input.budFertilityPct)}% férteis`],
+                  [
+                    'Gemas por planta',
+                    num(Math.ceil(r.budsPerPlant - 1e-9)),
+                    `${input.deadBudsPct > 0 ? `${num(input.deadBudsPct, 1)}% mortas/danificadas · ` : ''}${num(input.budBreakPct)}% brotam × ${num(input.budFertilityPct)}% férteis`,
+                  ],
                   ['Gemas por saída', num(Math.ceil(r.budsPerArm - 1e-9)), undefined],
                 ].map(([label, value, sub], idx, arr) => (
                   <li key={label} className="flex flex-col">
