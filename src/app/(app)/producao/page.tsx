@@ -13,6 +13,7 @@ import { RowActions } from '@/components/ui/RowActions'
 import { byDate, eqIf, readFilters } from '@/lib/filters'
 import { closeLink, editLink } from '@/lib/url'
 import { AchievedBar, ForecastForm, type ForecastRow } from './ForecastForm'
+import { Simulator, type SimPlot } from '@/components/production/Simulator'
 
 export const metadata: Metadata = { title: 'Produção' }
 
@@ -22,6 +23,7 @@ const TABS = [
   { key: 'colheita', label: 'Colheita' },
   { key: 'talhoes', label: 'Talhões' },
   { key: 'variedades', label: 'Variedades' },
+  { key: 'simulador', label: 'Simulador' },
 ]
 
 /** Linha por talhao usada nas abas — mesma forma com ou sem safra. */
@@ -80,6 +82,29 @@ export default async function ProducaoPage({
           .eq('status', 'aberta')
           .maybeSingle()
       : { data: null }
+
+  const simPlots: SimPlot[] =
+    tab === 'simulador'
+      ? (
+          (
+            await supabase
+              .from('plots')
+              .select('id, code, name, area, row_spacing, plant_spacing, plant_count, varieties(name)')
+              .eq('farm_id', ctx.farm.id)
+              .neq('status', 'inativo')
+              .order('code')
+          ).data ?? []
+        ).map((p) => ({
+          id: p.id,
+          code: p.code,
+          name: p.name,
+          area: Number(p.area),
+          row_spacing: p.row_spacing === null ? null : Number(p.row_spacing),
+          plant_spacing: p.plant_spacing === null ? null : Number(p.plant_spacing),
+          plant_count: p.plant_count,
+          variety: (p.varieties as { name: string } | null)?.name ?? null,
+        }))
+      : []
 
   const [options, records, forecast, perf, list, editing] = await Promise.all([
     getFormOptions(ctx.farm.id),
@@ -457,6 +482,15 @@ export default async function ProducaoPage({
               </tbody>
             </table>
           </div>
+        </Section>
+      )}
+
+      {tab === 'simulador' && (
+        <Section
+          title="Simulador de produção — uva"
+          description="Diga quanto quer colher e a ferramenta calcula, de trás para frente, cachos, brotos, gemas e a poda: varas por saída e gemas por vara, já descontando as perdas da colheita."
+        >
+          <Simulator plots={simPlots} seasonName={season?.name ?? null} />
         </Section>
       )}
 

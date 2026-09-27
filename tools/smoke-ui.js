@@ -204,6 +204,10 @@ async function main() {
   const vari = await get('/producao?aba=variedades')
   contains('comparativo por variedade', vari.html, 'Previsão x realizado por variedade')
   contains('variedade listada', vari.html, 'Vitória')
+  const sim = await get('/producao?aba=simulador')
+  status('simulador carrega', sim.code, 200)
+  contains('simulador calcula a poda', sim.html, 'Como podar')
+  contains('simulador indica uma poda', sim.html, 'indicada')
 
   console.log('\n5c. Filtros, edição e Excel')
   const login = await fetch(BASE + '/entrar', { signal: AbortSignal.timeout(120_000) })
