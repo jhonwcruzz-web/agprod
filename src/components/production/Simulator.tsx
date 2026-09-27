@@ -27,7 +27,9 @@ type Texts = Record<Key, string>
 const STORAGE = 'agprod-simulador'
 
 const toTexts = (i: SimInput): Texts =>
-  Object.fromEntries(Object.entries(i).map(([k, v]) => [k, toBr(v, 2).replace(/,00$/, '')])) as Texts
+  Object.fromEntries(
+    Object.entries(i).map(([k, v]) => [k, Number.isFinite(v) ? toBr(v, 2).replace(/,00$/, '') : '']),
+  ) as Texts
 
 /** Campos, na ordem da conversa com o produtor, com a explicacao do consultor. */
 const GROUPS: { title: string; fields: { key: Key; label: string; unit: string; hint: string }[] }[] = [
@@ -57,7 +59,18 @@ const GROUPS: { title: string; fields: { key: Key; label: string; unit: string; 
   {
     title: 'Gemas',
     fields: [
-      { key: 'budFertilityPct', label: 'Fertilidade das gemas', unit: '%', hint: 'Da análise de gemas: 40% = em cada 10 gemas, 4 trazem cacho.' },
+      {
+        key: 'budFertilityPct',
+        label: 'Fertilidade das gemas 1 a 5 (base)',
+        unit: '%',
+        hint: 'Da análise de gemas: % de férteis nas 5 primeiras gemas. Sem análise por posição, use a média (40% = em 10 gemas, 4 trazem cacho).',
+      },
+      {
+        key: 'tipFertilityPct',
+        label: 'Fertilidade das gemas 6 em diante (opcional)',
+        unit: '%',
+        hint: 'Em geral bem maior que a da base. Em branco, a vara toda vale como a base.',
+      },
       { key: 'budBreakPct', label: 'Brotação', unit: '%', hint: 'Das gemas deixadas na poda, quantas brotam. Com boa quebra de dormência, 80 a 90%.' },
       {
         key: 'deadBudsPct',
@@ -203,7 +216,7 @@ export function Simulator({ plots, seasonName }: { plots: SimPlot[]; seasonName:
                   [
                     'Gemas por planta',
                     num(Math.ceil(r.budsPerPlant - 1e-9)),
-                    `${input.deadBudsPct > 0 ? `${num(input.deadBudsPct, 1)}% mortas/danificadas · ` : ''}${num(input.budBreakPct)}% brotam × ${num(input.budFertilityPct)}% férteis`,
+                    `${input.deadBudsPct > 0 ? `${num(input.deadBudsPct, 1)}% mortas/danificadas · ` : ''}${num(input.budBreakPct)}% brotam × ${num(r.fertilityUsedPct, 1)}% férteis${r.splitFertility ? ' (média da poda indicada)' : ''}`,
                   ],
                   ['Gemas por saída', num(Math.ceil(r.budsPerArm - 1e-9)), undefined],
                 ].map(([label, value, sub], idx, arr) => (
@@ -236,14 +249,16 @@ export function Simulator({ plots, seasonName }: { plots: SimPlot[]; seasonName:
             <section className="rounded-lg border border-line bg-bg-raised p-5">
               <h3 className="text-sm font-semibold">Como podar</h3>
               <p className="mt-1 text-xs text-text-muted">
-                Para chegar a {num(Math.ceil(r.budsPerArm - 1e-9))} gemas por saída. Toque numa linha para ver o resultado da poda. A
-                produção abaixo já considera varas inteiras.
+                {r.splitFertility
+                  ? 'A fertilidade muda com o comprimento: vara mais longa alcança as gemas mais férteis da ponta.'
+                  : `Para chegar a ${num(Math.ceil(r.budsPerArm - 1e-9))} gemas por saída.`}{' '}
+                Toque numa linha para ver o resultado da poda. A produção já considera varas inteiras.
               </p>
               <div className="-mx-5 mt-3 overflow-x-auto px-5">
                 <table className="w-full min-w-[460px] border-collapse text-sm">
                   <thead>
                     <tr className="border-b border-line-strong text-left">
-                      {['Gemas por vara', 'Varas por saída', 'Varas por planta', 'Produção', 'Meta'].map((h, idx) => (
+                      {['Gemas por vara', ...(r.splitFertility ? ['Fertilidade'] : []), 'Varas por saída', 'Varas por planta', 'Produção', 'Meta'].map((h, idx) => (
                         <th key={h} className={`pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-text-faint ${idx > 0 ? 'text-right' : ''}`}>
                           {h}
                         </th>
@@ -266,6 +281,7 @@ export function Simulator({ plots, seasonName }: { plots: SimPlot[]; seasonName:
                               <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-[10px] font-medium text-on-accent">indicada</span>
                             )}
                           </td>
+                          {r.splitFertility && <td className="num py-2.5 text-right text-text-muted">{num(Math.round(o.fertilityPct * 10) / 10, 1)}%</td>}
                           <td className="num py-2.5 text-right font-semibold">{o.canesPerArm}</td>
                           <td className="num py-2.5 text-right text-text-muted">{o.canesPerPlant}</td>
                           <td className="num py-2.5 text-right">{num(o.commercialTHa, 1)} t/ha</td>
