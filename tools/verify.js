@@ -404,6 +404,27 @@ async function main() {
   checkTrue('B nao consegue usar produto da fazenda A', !!crossErr, crossErr ? '' : 'insercao aceita')
   ;({ data: dz } = await a.client.from('products').select('current_stock').eq('id', diesel.id).single())
   check('estoque de A intacto apos tentativa de B', Number(dz.current_stock), 160)
+  // Ordens de servico: numeradas por fazenda e invisiveis para as outras.
+  const mkOs = async () =>
+    (await a.client.from('service_orders').insert({
+      farm_id: farmA.id, number: 0, kind: 'manutencao', machine_id: tractor.id, scheduled_date: '2026-09-25',
+    }).select('id, number').single()).data
+  const os1 = await mkOs()
+  const os2 = await mkOs()
+  check('OS numeradas em sequencia na fazenda', `${os1?.number},${os2?.number}`, '1,2')
+  const { data: osSeenByB } = await b.client.from('service_orders').select('id').eq('id', os1.id)
+  check('B nao ve a OS de A', (osSeenByB ?? []).length, 0)
+  const { error: osCrossErr } = await b.client.from('applications').insert({
+    farm_id: farmB.id, plot_id: plotB.id, product_name: 'x', status: 'programada',
+    scheduled_date: '2026-09-25', service_order_id: os1.id,
+  })
+  checkTrue('B nao liga pulverizacao a OS de A', !!osCrossErr, osCrossErr ? '' : 'insercao aceita')
+  const { error: osOtherFarmMachine } = await b.client.from('service_orders').insert({
+    farm_id: farmB.id, number: 0, kind: 'manutencao', machine_id: tractor.id, scheduled_date: '2026-09-25',
+  })
+  checkTrue('B nao cria OS com a maquina de A', !!osOtherFarmMachine, osOtherFarmMachine ? '' : 'insercao aceita')
+  await a.client.from('service_orders').delete().in('id', [os1.id, os2.id])
+
   // O talhao de B so' existia para esta checagem (as de RLS contam talhoes de B).
   await b.client.from('plots').delete().eq('id', plotB.id)
 

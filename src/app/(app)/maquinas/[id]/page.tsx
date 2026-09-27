@@ -176,6 +176,9 @@ export default async function MaquinaPage({
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <ButtonLink href={`/ordens?nova=manutencao&maquina_os=${id}` as Route} variant="secondary" size="sm">
+              Ordem de serviço
+            </ButtonLink>
             <ButtonLink
               href={`/maquinas/${id}?editar=1` as Route}
               variant="secondary"

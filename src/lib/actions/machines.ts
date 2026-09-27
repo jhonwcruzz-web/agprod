@@ -16,6 +16,7 @@ import {
   requireWriteContext,
 } from './shared'
 import { stockCost } from '@/lib/calc'
+import { closeOrderFromRecord } from './order-link'
 
 const zeroOrMore = decimal.transform((v) => v ?? 0)
 
@@ -178,6 +179,7 @@ export async function saveMachineLog(_prev: ActionState, formData: FormData): Pr
     return { error: dbError(error.message) }
   }
 
+  if (!/^[0-9a-f-]{36}$/i.test(id) && !isFuel) await closeOrderFromRecord(w, formData, 'manutencao')
   revalidatePath('/maquinas')
   revalidatePath(`/maquinas/${d.machine_id}`)
   revalidatePath('/custos')

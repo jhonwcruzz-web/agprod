@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Children, type ReactNode } from 'react'
 
 /* Blocos de pagina. Agrupamento por regua e espaco negativo em vez de
    caixas empilhadas — a interface deve parecer editorial, nao um ERP. */
@@ -20,7 +20,8 @@ export function PageHeader({
         </h1>
         {subtitle && <p className="mt-1 text-sm text-text-muted">{subtitle}</p>}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {/* No celular os botoes quebram linha em vez de alargar a pagina. */}
+      {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:flex-nowrap">{actions}</div>}
     </header>
   )
 }
@@ -62,9 +63,21 @@ export function Section({
  * Faixa horizontal de indicadores (secao 22 do escopo).
  * Separada por linha vertical, sem caixas — os numeros respiram.
  */
+// Classes estaticas (o Tailwind so' gera o que aparece escrito no codigo).
+const SM_COLS = ['', 'sm:grid-cols-1', 'sm:grid-cols-2', 'sm:grid-cols-3', 'sm:grid-cols-2', 'sm:grid-cols-3']
+const LG_COLS = ['', 'lg:grid-cols-1', 'lg:grid-cols-2', 'lg:grid-cols-3', 'lg:grid-cols-4', 'lg:grid-cols-5']
+
+/**
+ * Faixa de numeros. As colunas acompanham a quantidade de metricas, para
+ * nao sobrar celula vazia; no celular, a ultima de uma quantidade impar
+ * ocupa a linha inteira.
+ */
 export function MetricStrip({ children }: { children: ReactNode }) {
+  const n = Math.min(5, Math.max(1, Children.toArray(children).length))
   return (
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg bg-line sm:grid-cols-3 lg:grid-cols-5">
+    <div
+      className={`grid grid-cols-2 gap-px overflow-hidden rounded-lg bg-line ${SM_COLS[n]} ${LG_COLS[n]} max-sm:[&>*:last-child:nth-child(odd)]:col-span-2`}
+    >
       {children}
     </div>
   )

@@ -251,6 +251,7 @@ export type Database = {
           updated_at: string
           machine_id: string | null
           implement_id: string | null
+          service_order_id: string | null
         }
         Insert: {
           id?: string
@@ -278,6 +279,7 @@ export type Database = {
           updated_at?: string
           machine_id?: string | null
           implement_id?: string | null
+          service_order_id?: string | null
         }
         Update: {
           id?: string
@@ -305,6 +307,7 @@ export type Database = {
           updated_at?: string
           machine_id?: string | null
           implement_id?: string | null
+          service_order_id?: string | null
         }
         Relationships: [
           {
@@ -361,6 +364,13 @@ export type Database = {
             columns: ['season_id']
             isOneToOne: false
             referencedRelation: 'seasons'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'applications_service_order_id_fkey'
+            columns: ['service_order_id']
+            isOneToOne: false
+            referencedRelation: 'service_orders'
             referencedColumns: ['id']
           }
         ]
@@ -2000,6 +2010,146 @@ export type Database = {
             columns: ['farm_id']
             isOneToOne: false
             referencedRelation: 'farms'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      service_orders: {
+        Row: {
+          id: string
+          farm_id: string
+          season_id: string | null
+          number: number
+          kind: string
+          status: string
+          scheduled_date: string
+          plot_id: string | null
+          machine_id: string | null
+          implement_id: string | null
+          assignee: string | null
+          assignee_phone: string | null
+          instructions: string | null
+          area: number | null
+          spray_volume: number | null
+          tank_capacity: number | null
+          variety_id: string | null
+          expected_quantity: number | null
+          expected_unit: Database['public']['Enums']['quantity_unit'] | null
+          destination: string | null
+          team_size: number | null
+          log_type: Database['public']['Enums']['machine_log_type'] | null
+          checklist: string | null
+          completed_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          farm_id: string
+          season_id?: string | null
+          number: number
+          kind: string
+          status?: string
+          scheduled_date?: string
+          plot_id?: string | null
+          machine_id?: string | null
+          implement_id?: string | null
+          assignee?: string | null
+          assignee_phone?: string | null
+          instructions?: string | null
+          area?: number | null
+          spray_volume?: number | null
+          tank_capacity?: number | null
+          variety_id?: string | null
+          expected_quantity?: number | null
+          expected_unit?: Database['public']['Enums']['quantity_unit'] | null
+          destination?: string | null
+          team_size?: number | null
+          log_type?: Database['public']['Enums']['machine_log_type'] | null
+          checklist?: string | null
+          completed_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          farm_id?: string
+          season_id?: string | null
+          number?: number
+          kind?: string
+          status?: string
+          scheduled_date?: string
+          plot_id?: string | null
+          machine_id?: string | null
+          implement_id?: string | null
+          assignee?: string | null
+          assignee_phone?: string | null
+          instructions?: string | null
+          area?: number | null
+          spray_volume?: number | null
+          tank_capacity?: number | null
+          variety_id?: string | null
+          expected_quantity?: number | null
+          expected_unit?: Database['public']['Enums']['quantity_unit'] | null
+          destination?: string | null
+          team_size?: number | null
+          log_type?: Database['public']['Enums']['machine_log_type'] | null
+          checklist?: string | null
+          completed_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'service_orders_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'service_orders_farm_id_fkey'
+            columns: ['farm_id']
+            isOneToOne: false
+            referencedRelation: 'farms'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'service_orders_implement_id_fkey'
+            columns: ['implement_id']
+            isOneToOne: false
+            referencedRelation: 'machines'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'service_orders_machine_id_fkey'
+            columns: ['machine_id']
+            isOneToOne: false
+            referencedRelation: 'machines'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'service_orders_plot_id_fkey'
+            columns: ['plot_id']
+            isOneToOne: false
+            referencedRelation: 'plots'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'service_orders_season_id_fkey'
+            columns: ['season_id']
+            isOneToOne: false
+            referencedRelation: 'seasons'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'service_orders_variety_id_fkey'
+            columns: ['variety_id']
+            isOneToOne: false
+            referencedRelation: 'varieties'
             referencedColumns: ['id']
           }
         ]

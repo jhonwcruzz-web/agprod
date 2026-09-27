@@ -15,6 +15,7 @@ import {
   requireWriteContext,
 } from './shared'
 import { DOSE_UNITS, round, sprayQuantity, stockCost } from '@/lib/calc'
+import { closeOrderFromRecord } from './order-link'
 
 const UNITS = ['kg', 't', 'caixa', 'unidade', 'L', 'g', 'mL', 'saco', 'dose'] as const
 const positive = decimal.refine((v): v is number => v !== null && v > 0, 'Informe uma quantidade')
@@ -131,6 +132,7 @@ export async function saveProduction(_prev: ActionState, formData: FormData): Pr
   const r = await upsert(w, 'production_records', id, { ...d, crop_id })
   if (r.error) return { error: r.error }
 
+  if (!id) await closeOrderFromRecord(w, formData, 'colheita')
   refresh('/producao', '/talhoes')
   return { message: id ? 'Colheita atualizada.' : 'Colheita registrada.' }
 }

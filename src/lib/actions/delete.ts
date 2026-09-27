@@ -35,6 +35,7 @@ export type DeletableKind =
   | 'categoria_custo'
   | 'categoria_estoque'
   | 'destino'
+  | 'ordem'
 
 const TABLE: Record<DeletableKind, string> = {
   colheita: 'production_records',
@@ -53,6 +54,7 @@ const TABLE: Record<DeletableKind, string> = {
   categoria_custo: 'expense_categories',
   categoria_estoque: 'product_categories',
   destino: 'harvest_destinations',
+  ordem: 'service_orders',
 }
 
 const PATHS: Record<DeletableKind, string[]> = {
@@ -72,6 +74,7 @@ const PATHS: Record<DeletableKind, string[]> = {
   categoria_custo: ['/custos'],
   categoria_estoque: ['/estoque'],
   destino: ['/producao'],
+  ordem: ['/ordens', '/pulverizacao'],
 }
 
 export type DeleteResult = { ok: true; message: string } | { ok: false; error: string }
@@ -164,6 +167,18 @@ export async function deleteRecord(kind: DeletableKind, id: string): Promise<Del
       for (const p of PATHS[kind]) revalidatePath(p)
       return { ok: true, message: 'Máquina tem histórico — foi marcada como inativa em vez de excluída.' }
     }
+  }
+
+  // OS: as pulverizacoes da calda que ainda nao foram feitas saem junto
+  // (as ja' realizadas ficam — sao historico de estoque e custo).
+  if (kind === 'ordem') {
+    const { error } = await db
+      .from('applications')
+      .delete()
+      .eq('service_order_id', id)
+      .eq('farm_id', farmId)
+      .neq('status', 'realizada')
+    if (error) return { ok: false, error: dbError(error.message) }
   }
 
   // --- exclusao

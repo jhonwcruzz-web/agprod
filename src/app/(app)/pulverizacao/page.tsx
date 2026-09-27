@@ -27,7 +27,7 @@ export default async function PulverizacaoPage({ searchParams }: { searchParams:
   let q = supabase
     .from('applications')
     .select(
-      '*, plots(code, name), products(unit), machine:machines!applications_machine_id_fkey(name), implement:machines!applications_implement_id_fkey(name)',
+      '*, plots(code, name), products(unit), service_orders(number), machine:machines!applications_machine_id_fkey(name), implement:machines!applications_implement_id_fkey(name)',
       { count: 'exact' },
     )
     .eq('farm_id', ctx.farm.id)
@@ -82,7 +82,14 @@ export default async function PulverizacaoPage({ searchParams }: { searchParams:
         subtitle={`${ctx.season ? `Safra ${ctx.season.name}` : 'Todas as safras'}${
           total > rows.length ? ` · mostrando ${rows.length} de ${total}` : ''
         }`}
-        actions={<ButtonLink href="/pulverizacao?novo=1">Registrar pulverização</ButtonLink>}
+        actions={
+          <>
+            <ButtonLink href={'/ordens?nova=pulverizacao' as Route} variant="secondary">
+              Ordem de serviço
+            </ButtonLink>
+            <ButtonLink href="/pulverizacao?novo=1">Registrar pulverização</ButtonLink>
+          </>
+        }
       />
 
       {sp.novo === '1' && <SprayForm {...formProps} />}
@@ -204,7 +211,18 @@ export default async function PulverizacaoPage({ searchParams }: { searchParams:
                           )}
                         </td>
                         <td className="py-2.5 pr-3">
-                          <span className="block truncate">{r.product_name}</span>
+                          <span className="block truncate">
+                            {r.product_name}
+                            {(r.service_orders as { number: number } | null) && (
+                              <Link
+                                href={'/ordens?aba=todas' as Route}
+                                className="num ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent-text"
+                                title="Faz parte de uma ordem de serviço"
+                              >
+                                {`OS ${String((r.service_orders as { number: number }).number).padStart(4, '0')}`}
+                              </Link>
+                            )}
+                          </span>
                           {r.active_ingredient && (
                             <span className="block truncate text-xs text-text-faint">{r.active_ingredient}</span>
                           )}

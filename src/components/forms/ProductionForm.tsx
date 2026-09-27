@@ -21,12 +21,15 @@ export function ProductionForm({
   destinations,
   closeHref,
   initial,
+  serviceOrder,
 }: {
   plots: PlotOption[]
   varieties: VarietyOption[]
   destinations: { name: string }[]
   closeHref: Route
   initial?: Partial<Tables<'production_records'>>
+  /** Colheita feita a partir de uma OS: salvar conclui a OS. */
+  serviceOrder?: { id: string; number: number }
 }) {
   const [unit, setUnit] = useState<string>(initial?.unit ?? 'kg')
   const needsWeight = !MASS_UNITS.includes(unit)
@@ -44,12 +47,23 @@ export function ProductionForm({
   return (
     <FormPanel
       action={saveProduction}
-      title={editing ? 'Editar colheita' : 'Registrar colheita'}
-      description="Data, talhão e quantidade bastam. A variedade vem do talhão."
+      title={
+        editing
+          ? 'Editar colheita'
+          : serviceOrder
+            ? `Registrar colheita da OS ${String(serviceOrder.number).padStart(4, '0')}`
+            : 'Registrar colheita'
+      }
+      description={
+        serviceOrder
+          ? 'Preenchido com os dados da ordem. Informe o que foi colhido — ao salvar, a OS é concluída.'
+          : 'Data, talhão e quantidade bastam. A variedade vem do talhão.'
+      }
       closeHref={closeHref}
       submitLabel={editing ? 'Salvar alterações' : 'Registrar colheita'}
       editId={initial?.id}
     >
+      {serviceOrder && <input type="hidden" name="service_order_id" value={serviceOrder.id} />}
       <FormGrid>
         <Field label="Data" htmlFor="harvest_date" required>
           <Input

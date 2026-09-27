@@ -59,7 +59,11 @@ async function submit(cookie, pagePath, fields, anchorField) {
   const body = new FormData()
   for (const [k, v] of actionFields(html, anchorField)) body.append(k, v)
   // So' os campos que o formulario REALMENTE mostra nessa variacao.
-  for (const [k, v] of Object.entries(fields)) body.append(k, v)
+  for (const [k, v] of Object.entries(fields)) {
+    // Campo repetido (ex.: linhas da calda da OS): array de valores.
+    if (Array.isArray(v)) v.forEach((x) => body.append(k, x))
+    else body.append(k, v)
+  }
   const res = await fetch(BASE + pagePath, {
     method: 'POST',
     headers: { cookie },
@@ -217,6 +221,81 @@ async function main() {
         movement_type: 'entrada', product_id: product.id, quantity: '20', movement_date: today,
         unit_cost: '230', total_cost: '', notes: '', register_expense: 'on',
       }, 'movement_type'), 'Movimento registrado')
+
+    console.log('\nOrdens de serviço')
+    const osCount = async () => (await c.from('service_orders').select('id', { count: 'exact', head: true }).eq('farm_id', farm.id)).count
+    expectOk('OS de pulverização sem produto é recusada',
+      await submit(cookie, '/ordens?nova=pulverizacao', {
+        kind: 'pulverizacao', scheduled_date: today, plot_id: plot.id, assignee: '', assignee_phone: '',
+        machine_id: '', implement_id: '', area: '', spray_volume: '', tank_capacity: '',
+        line_product_id: [''], line_dose: [''], line_dose_unit: ['L/ha'], instructions: '',
+      }, 'line_dose'), 'Inclua pelo menos um produto na calda')
+    // Calda com 2 produtos: 2 ha x 500 L/ha = 1000 L; tanque de 400 L = 3 tanques.
+    expectOk('OS de pulverização com calda de 2 produtos',
+      await submit(cookie, '/ordens?nova=pulverizacao', {
+        kind: 'pulverizacao', scheduled_date: today, plot_id: plot.id, assignee: 'José Aplicador',
+        assignee_phone: '(87) 99999-0000', machine_id: tractor.id, implement_id: '', area: '',
+        spray_volume: '500', tank_capacity: '400',
+        line_product_id: [fungicide.id, product.id], line_dose: ['2', '5'], line_dose_unit: ['L/ha', 'kg/ha'],
+        instructions: 'Começar pela linha 1.',
+      }, 'line_dose'), 'de pulverização criada')
+    const { data: sprayOs } = await c.from('service_orders').select('id, number, status').eq('farm_id', farm.id).eq('kind', 'pulverizacao').single()
+    const { data: calda } = await c.from('applications').select('product_id, total_quantity, status').eq('service_order_id', sprayOs.id).order('total_quantity')
+    const okCalda = calda?.length === 2 && calda.every((a) => a.status === 'programada') &&
+      Number(calda[0].total_quantity) === 4 && Number(calda[1].total_quantity) === 10
+    if (okCalda) { passed++; console.log('  OK   calda vira 2 pulverizações programadas (4 L e 10 kg)') }
+    else { failed++; console.log('  FALHA calda:', JSON.stringify(calda)) }
+    if (sprayOs.number === 1) { passed++; console.log('  OK   primeira OS da fazenda é a nº 1') }
+    else { failed++; console.log('  FALHA numeração:', sprayOs.number) }
+
+    const pdfCheck = async (label, id, file) => {
+      const res = await fetch(`${BASE}/api/os/${id}/pdf`, { headers: { cookie }, signal: AbortSignal.timeout(180_000) })
+      const buf = Buffer.from(await res.arrayBuffer())
+      const ok = res.status === 200 && buf.subarray(0, 5).toString() === '%PDF-' && buf.length > 2000
+      if (ok) { passed++; console.log(`  OK   ${label} (${(buf.length / 1024).toFixed(0)} KB)`) }
+      else { failed++; console.log(`  FALHA ${label}: HTTP ${res.status}`) }
+      if (process.env.PDF_DIR) require('fs').writeFileSync(require('path').join(process.env.PDF_DIR, file), buf)
+    }
+    await pdfCheck('PDF da OS de pulverização', sprayOs.id, 'os-pulverizacao.pdf')
+
+    expectOk('OS de colheita',
+      await submit(cookie, '/ordens?nova=colheita', {
+        kind: 'colheita', scheduled_date: today, plot_id: plot.id, variety_id: '', assignee: 'Turma do Zé',
+        assignee_phone: '', expected_quantity: '300', expected_unit: 'caixa', destination: 'Packing house',
+        team_size: '8', instructions: 'Só cachos maduros.',
+      }, 'expected_quantity'), 'de colheita criada')
+    const { data: harvestOs } = await c.from('service_orders').select('id, number').eq('farm_id', farm.id).eq('kind', 'colheita').single()
+    await pdfCheck('PDF da OS de colheita', harvestOs.id, 'os-colheita.pdf')
+    expectOk('registrar a colheita da OS',
+      await submit(cookie, `/producao?novo=1&os=${harvestOs.id}`, {
+        harvest_date: today, plot_id: plot.id, variety_id: '', quantity: '2400', unit: 'kg',
+        destination: 'Packing house', team: 'Turma do Zé', service_order_id: harvestOs.id,
+      }, 'harvest_date'), 'Colheita registrada')
+    const { data: h2 } = await c.from('service_orders').select('status').eq('id', harvestOs.id).single()
+    if (h2.status === 'concluida') { passed++; console.log('  OK   OS de colheita concluída ao registrar') }
+    else { failed++; console.log('  FALHA OS de colheita ficou', h2.status) }
+
+    expectOk('OS de manutenção',
+      await submit(cookie, `/ordens?nova=manutencao&maquina_os=${tractor.id}`, {
+        kind: 'manutencao', scheduled_date: today, machine_id: tractor.id, assignee: 'Oficina Central',
+        assignee_phone: '87999990000', log_type: 'preventiva', plot_id: '',
+        checklist: 'Trocar óleo do motor\nTrocar filtro de óleo\nEngraxar', instructions: '',
+      }, 'checklist'), 'de manutenção criada')
+    const { data: maintOs } = await c.from('service_orders').select('id, number').eq('farm_id', farm.id).eq('kind', 'manutencao').single()
+    await pdfCheck('PDF da OS de manutenção', maintOs.id, 'os-manutencao.pdf')
+    expectOk('registrar a manutenção da OS',
+      await submit(cookie, `/maquinas?registro=1&maquina=${tractor.id}&os=${maintOs.id}`, {
+        machine_id: tractor.id, log_type: 'preventiva', log_date: today, meter_reading: '',
+        description: 'Troca de óleo e filtro', cost: '350', supplier: '', next_due_date: '',
+        next_due_meter: '', plot_id: '', responsible: '', product_id: '', product_quantity: '',
+        service_order_id: maintOs.id,
+      }, 'log_type'), 'Registro salvo')
+    const { data: m2 } = await c.from('service_orders').select('status').eq('id', maintOs.id).single()
+    if (m2.status === 'concluida') { passed++; console.log('  OK   OS de manutenção concluída ao registrar') }
+    else { failed++; console.log('  FALHA OS de manutenção ficou', m2.status) }
+    const n = await osCount()
+    if (n === 3) { passed++; console.log('  OK   3 ordens numeradas na fazenda') }
+    else { failed++; console.log('  FALHA contagem de OS:', n) }
   } finally {
     const pg = new Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } })
     await pg.connect()

@@ -126,6 +126,12 @@ async function main() {
     min_stock: 20, unit_cost: 50,
   })
 
+  const { data: order } = await c.from('service_orders').insert({
+    farm_id: farm.id, season_id: season.id, number: 0, kind: 'colheita', plot_id: plot.id,
+    scheduled_date: '2026-09-30', assignee: 'Turma do Zé', assignee_phone: '87999990000',
+    expected_quantity: 300, expected_unit: 'caixa', destination: 'Packing house',
+  }).select('id, number').single()
+
   const cookies = sessionCookies(s.session).join('; ')
   const get = async (p) => {
     // Timeout largo: em dev o Next compila a rota na primeira visita.
@@ -217,6 +223,23 @@ async function main() {
   }
   const anon = await fetch(`${BASE}/api/exportar/custos`, { redirect: 'manual', signal: AbortSignal.timeout(120_000) })
   status('excel sem login é bloqueado', anon.status === 200 ? 200 : 401, 401)
+
+  console.log('\n5d. Ordens de serviço')
+  const ordens = await get('/ordens')
+  status('ordens carregam', ordens.code, 200)
+  contains('OS numerada na lista', ordens.html, 'OS 0001')
+  contains('botão de PDF', ordens.html, `/api/os/${order.id}/pdf`)
+  contains('botão enviar (WhatsApp)', ordens.html, 'Enviar')
+  contains('concluir colheita leva ao formulário', ordens.html, `os=${order.id}`)
+  const novaOs = await get('/ordens?nova=pulverizacao')
+  contains('formulário da calda', novaOs.html, 'Adicionar produto à calda')
+  const pdf = await fetch(`${BASE}/api/os/${order.id}/pdf`, { headers: { cookie: cookies }, signal: AbortSignal.timeout(120_000) })
+  const pdfBuf = Buffer.from(await pdf.arrayBuffer())
+  status('PDF da OS', pdf.status === 200 && pdfBuf.subarray(0, 5).toString() === '%PDF-' ? 200 : pdf.status, 200)
+  const pdfAnon = await fetch(`${BASE}/api/os/${order.id}/pdf`, { redirect: 'manual', signal: AbortSignal.timeout(120_000) })
+  status('PDF da OS sem login é bloqueado', pdfAnon.status === 200 ? 200 : 401, 401)
+  const fromOs = await get(`/producao?novo=1&os=${order.id}`)
+  contains('colheita vinda da OS vem preenchida', fromOs.html, 'Registrar colheita da OS 0001')
 
   console.log('\n6. Limpeza')
   const pg = new Client({

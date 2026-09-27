@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import type { Metadata } from 'next'
+import type { Metadata, Route } from 'next'
 import { requireFarm } from '@/lib/farm'
 import { createClient } from '@/lib/supabase/server'
 import { getFormOptions } from '@/lib/queries/options'
@@ -67,6 +67,19 @@ export default async function ProducaoPage({
     .eq('farm_id', ctx.farm.id)
   if (season) listQuery = listQuery.eq('season_id', season.id)
   listQuery = eqIf(byDate(listQuery, 'harvest_date', f), 'plot_id', f.talhao)
+
+  // Colheita vinda de uma ordem de servico aberta: o formulario ja' vem preenchido.
+  const { data: fromOrder } =
+    sp.novo === '1' && sp.os && /^[0-9a-f-]{36}$/i.test(sp.os)
+      ? await supabase
+          .from('service_orders')
+          .select('id, number, plot_id, variety_id, destination, assignee, expected_unit')
+          .eq('id', sp.os)
+          .eq('farm_id', ctx.farm.id)
+          .eq('kind', 'colheita')
+          .eq('status', 'aberta')
+          .maybeSingle()
+      : { data: null }
 
   const [options, records, forecast, perf, list, editing] = await Promise.all([
     getFormOptions(ctx.farm.id),
@@ -170,15 +183,36 @@ export default async function ProducaoPage({
       <PageHeader
         title="Produção"
         subtitle={season ? `Safra ${season.name}` : 'Todas as safras'}
-        actions={<ButtonLink href="/producao?novo=1">Registrar colheita</ButtonLink>}
+        actions={
+          <>
+            <ButtonLink href={'/ordens?nova=colheita' as Route} variant="secondary">
+              Ordem de serviço
+            </ButtonLink>
+            <ButtonLink href="/producao?novo=1">Registrar colheita</ButtonLink>
+          </>
+        }
       />
 
       {sp.novo === '1' && (
         <ProductionForm
+          key={fromOrder?.id ?? 'novo'}
           plots={options.plots}
           varieties={options.varieties}
           destinations={options.destinations}
-          closeHref={closeLink('/producao', sp)}
+          closeHref={fromOrder ? ('/ordens' as Route) : closeLink('/producao', sp)}
+          serviceOrder={fromOrder ? { id: fromOrder.id, number: fromOrder.number } : undefined}
+          initial={
+            fromOrder
+              ? {
+                  plot_id: fromOrder.plot_id,
+                  variety_id: fromOrder.variety_id,
+                  destination: fromOrder.destination,
+                  team: fromOrder.assignee,
+                  unit: fromOrder.expected_unit ?? 'kg',
+                  notes: `OS ${String(fromOrder.number).padStart(4, '0')}`,
+                }
+              : undefined
+          }
         />
       )}
       {editing.data && (

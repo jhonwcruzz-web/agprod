@@ -95,6 +95,8 @@ export function ProductSelect({
   label = 'Produto do estoque',
   required,
   emptyLabel = '—',
+  name = 'product_id',
+  id = name,
 }: {
   products: StockProduct[]
   value: string
@@ -102,6 +104,9 @@ export function ProductSelect({
   label?: string
   required?: boolean
   emptyLabel?: string
+  /** Nome do campo; a calda da OS tem varias linhas de produto. */
+  name?: string
+  id?: string
 }) {
   const groups = new Map<string, StockProduct[]>()
   for (const p of products) {
@@ -114,7 +119,7 @@ export function ProductSelect({
   return (
     <Field
       label={label}
-      htmlFor="product_id"
+      htmlFor={id}
       required={required}
       hint={
         selected
@@ -125,8 +130,8 @@ export function ProductSelect({
       }
     >
       <Select
-        id="product_id"
-        name="product_id"
+        id={id}
+        name={name}
         required={required}
         value={value}
         onChange={(e) => onChange(e.target.value)}

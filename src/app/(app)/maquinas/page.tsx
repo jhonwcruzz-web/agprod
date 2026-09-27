@@ -304,6 +304,19 @@ export default async function MaquinasPage({
     .eq('farm_id', ctx.farm.id)
   logsQ = eqIf(byDate(logsQ, 'log_date', f), 'machine_id', f.maquina)
 
+  // Manutencao vinda de uma ordem de servico aberta: formulario ja' preenchido.
+  const { data: fromOrder } =
+    sp.registro === '1' && sp.os && /^[0-9a-f-]{36}$/i.test(sp.os)
+      ? await supabase
+          .from('service_orders')
+          .select('id, number, machine_id, plot_id, log_type, checklist, assignee')
+          .eq('id', sp.os)
+          .eq('farm_id', ctx.farm.id)
+          .eq('kind', 'manutencao')
+          .eq('status', 'aberta')
+          .maybeSingle()
+      : { data: null }
+
   const [statusRes, logsRes, options, machinesRes, editing] = await Promise.all([
     supabase.from('v_machine_status').select('*').eq('farm_id', ctx.farm.id).order('name'),
     logsQ.order('log_date', { ascending: false }).limit(1000),
@@ -373,6 +386,9 @@ export default async function MaquinasPage({
             >
               {tab === 'implementos' ? 'Novo implemento' : 'Nova máquina'}
             </ButtonLink>
+            <ButtonLink href={'/ordens?nova=manutencao' as Route} variant="secondary">
+              Ordem de serviço
+            </ButtonLink>
             <ButtonLink href="/maquinas?registro=1">Registrar manutenção</ButtonLink>
           </>
         }
@@ -386,10 +402,26 @@ export default async function MaquinasPage({
           />
         ) : (
           <MachineLogForm
+            key={fromOrder?.id ?? 'novo'}
             machines={logOptions}
             plots={options.plots}
             products={options.products}
-            closeHref={closeLink('/maquinas', { ...sp, registro: undefined })}
+            closeHref={fromOrder ? ('/ordens' as Route) : closeLink('/maquinas', { ...sp, registro: undefined, os: undefined })}
+            serviceOrder={fromOrder ? { id: fromOrder.id, number: fromOrder.number } : undefined}
+            initial={
+              fromOrder
+                ? {
+                    machine_id: fromOrder.machine_id ?? undefined,
+                    plot_id: fromOrder.plot_id,
+                    log_type: fromOrder.log_type ?? 'preventiva',
+                    responsible: fromOrder.assignee,
+                    description: [
+                      `OS ${String(fromOrder.number).padStart(4, '0')}`,
+                      ...(fromOrder.checklist ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean),
+                    ].join(' · '),
+                  }
+                : undefined
+            }
             defaultMachineId={f.maquina ?? undefined}
             defaultType={sp.tipo === 'abastecimento' ? 'abastecimento' : 'preventiva'}
           />

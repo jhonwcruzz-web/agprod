@@ -20,6 +20,7 @@ export function MachineLogForm({
   defaultMachineId,
   defaultType = 'preventiva',
   initial,
+  serviceOrder,
 }: {
   machines: MachineOption[]
   plots: PlotOption[]
@@ -28,6 +29,8 @@ export function MachineLogForm({
   defaultMachineId?: string
   defaultType?: 'preventiva' | 'corretiva' | 'revisao' | 'abastecimento'
   initial?: Partial<Tables<'machine_logs'>>
+  /** Manutencao feita a partir de uma OS: salvar conclui a OS. */
+  serviceOrder?: { id: string; number: number }
 }) {
   const [type, setType] = useState<string>(initial?.log_type ?? defaultType)
   const [machineId, setMachineId] = useState(initial?.machine_id ?? defaultMachineId ?? '')
@@ -57,12 +60,21 @@ export function MachineLogForm({
   return (
     <FormPanel
       action={saveMachineLog}
-      title={`${editing ? 'Editar' : 'Registrar'} ${isFuel ? 'abastecimento' : 'manutenção'}`}
-      description="Tirou do estoque? Escolha o produto: a baixa e o custo são automáticos."
+      title={
+        serviceOrder && !editing
+          ? `Registrar manutenção da OS ${String(serviceOrder.number).padStart(4, '0')}`
+          : `${editing ? 'Editar' : 'Registrar'} ${isFuel ? 'abastecimento' : 'manutenção'}`
+      }
+      description={
+        serviceOrder
+          ? 'Preenchido com os dados da ordem. Informe custo e horímetro — ao salvar, a OS é concluída.'
+          : 'Tirou do estoque? Escolha o produto: a baixa e o custo são automáticos.'
+      }
       closeHref={closeHref}
       submitLabel={editing ? 'Salvar alterações' : 'Salvar registro'}
       editId={initial?.id}
     >
+      {serviceOrder && <input type="hidden" name="service_order_id" value={serviceOrder.id} />}
       <FormGrid>
         <Field label="Máquina ou implemento" htmlFor="machine_id" required>
           <Select id="machine_id" name="machine_id" value={machineId} onChange={(e) => setMachineId(e.target.value)} required>
