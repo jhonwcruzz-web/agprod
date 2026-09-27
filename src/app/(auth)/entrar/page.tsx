@@ -13,14 +13,14 @@ export default async function EntrarPage({
 
   return (
     <div>
-      <h1 className="text-3xl font-semibold tracking-tighter">Bom te ver de novo</h1>
-      <p className="mt-2 text-sm text-text-muted">
+      <h1 className="text-center text-3xl font-semibold tracking-tighter">Bom te ver de novo</h1>
+      <p className="mt-2 text-center text-sm text-text-muted">
         Entre para ver os números da sua propriedade.
       </p>
 
       <SignInForm destino={destino} />
 
-      <p className="mt-8 border-t border-line pt-6 text-sm text-text-muted">
+      <p className="mt-8 border-t border-line pt-6 text-center text-sm text-text-muted">
         Ainda não tem conta?{' '}
         <Link href="/criar-conta" className="font-medium text-text underline-offset-4 hover:underline">
           Criar conta

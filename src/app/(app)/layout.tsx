@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { Logo } from '@/components/ui/Logo'
-import { FieldScene } from '@/components/ui/FieldScene'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { ACCENT_COOKIE, THEME_COOKIE, parseAccent, parseTheme } from '@/lib/theme'
@@ -25,11 +24,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="lg:grid lg:min-h-[100dvh] lg:grid-cols-[240px_minmax(0,1fr)]">
       <aside className="sticky top-0 hidden h-[100dvh] flex-col overflow-hidden border-r border-line bg-bg-raised lg:flex">
-        {/* Parreiral em traco no pe' do menu: a cara do campo, sem pesar. */}
-        <FieldScene
-          showSky={false}
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-44 w-full text-text opacity-[0.09]"
-        />
         <Link
           href="/"
           className="relative flex h-14 shrink-0 items-center gap-2.5 border-b border-line px-4"
