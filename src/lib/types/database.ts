@@ -635,6 +635,7 @@ export type Database = {
           created_at: string
           updated_at: string
           is_production_cost: boolean
+          service_order_id: string | null
         }
         Insert: {
           id?: string
@@ -657,6 +658,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           is_production_cost?: boolean
+          service_order_id?: string | null
         }
         Update: {
           id?: string
@@ -679,6 +681,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           is_production_cost?: boolean
+          service_order_id?: string | null
         }
         Relationships: [
           {
@@ -707,6 +710,13 @@ export type Database = {
             columns: ['season_id']
             isOneToOne: false
             referencedRelation: 'seasons'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'expenses_service_order_id_fkey'
+            columns: ['service_order_id']
+            isOneToOne: false
+            referencedRelation: 'service_orders'
             referencedColumns: ['id']
           }
         ]
@@ -854,6 +864,7 @@ export type Database = {
           updated_at: string
           machine_id: string | null
           implement_id: string | null
+          service_order_id: string | null
         }
         Insert: {
           id?: string
@@ -877,6 +888,7 @@ export type Database = {
           updated_at?: string
           machine_id?: string | null
           implement_id?: string | null
+          service_order_id?: string | null
         }
         Update: {
           id?: string
@@ -900,6 +912,7 @@ export type Database = {
           updated_at?: string
           machine_id?: string | null
           implement_id?: string | null
+          service_order_id?: string | null
         }
         Relationships: [
           {
@@ -949,6 +962,13 @@ export type Database = {
             columns: ['season_id']
             isOneToOne: false
             referencedRelation: 'seasons'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'fertilizations_service_order_id_fkey'
+            columns: ['service_order_id']
+            isOneToOne: false
+            referencedRelation: 'service_orders'
             referencedColumns: ['id']
           }
         ]
@@ -2014,6 +2034,64 @@ export type Database = {
           }
         ]
       }
+      service_order_items: {
+        Row: {
+          id: string
+          farm_id: string
+          service_order_id: string
+          product_id: string
+          dose: number
+          dose_unit: string
+          quantity: number
+          sort: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          farm_id: string
+          service_order_id: string
+          product_id: string
+          dose: number
+          dose_unit: string
+          quantity: number
+          sort?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          farm_id?: string
+          service_order_id?: string
+          product_id?: string
+          dose?: number
+          dose_unit?: string
+          quantity?: number
+          sort?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'service_order_items_farm_id_fkey'
+            columns: ['farm_id']
+            isOneToOne: false
+            referencedRelation: 'farms'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'service_order_items_product_id_fkey'
+            columns: ['product_id']
+            isOneToOne: false
+            referencedRelation: 'products'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'service_order_items_service_order_id_fkey'
+            columns: ['service_order_id']
+            isOneToOne: false
+            referencedRelation: 'service_orders'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       service_orders: {
         Row: {
           id: string
@@ -2043,6 +2121,11 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          activity: string | null
+          application_method: string | null
+          labor_days: number | null
+          daily_rate: number | null
+          labor_cost: number | null
         }
         Insert: {
           id?: string
@@ -2072,6 +2155,11 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          activity?: string | null
+          application_method?: string | null
+          labor_days?: number | null
+          daily_rate?: number | null
+          labor_cost?: number | null
         }
         Update: {
           id?: string
@@ -2101,6 +2189,11 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          activity?: string | null
+          application_method?: string | null
+          labor_days?: number | null
+          daily_rate?: number | null
+          labor_cost?: number | null
         }
         Relationships: [
           {

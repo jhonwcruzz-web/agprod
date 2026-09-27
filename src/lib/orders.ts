@@ -1,13 +1,32 @@
 /* Ordens de servico: rotulos e contas usados na tela, no PDF e no WhatsApp. */
 
-export const ORDER_KINDS = ['pulverizacao', 'colheita', 'manutencao'] as const
+export const ORDER_KINDS = ['pulverizacao', 'adubacao', 'tratos', 'colheita', 'manutencao'] as const
 export type OrderKind = (typeof ORDER_KINDS)[number]
 
 export const ORDER_KIND_LABEL: Record<OrderKind, string> = {
   pulverizacao: 'Pulverização',
+  adubacao: 'Adubação',
+  tratos: 'Tratos culturais',
   colheita: 'Colheita',
   manutencao: 'Manutenção',
 }
+
+/** Tratos culturais mais comuns em uva e manga ("Outro" permite digitar). */
+export const CULTURAL_ACTIVITIES = [
+  'Poda',
+  'Desbrota',
+  'Raleio de cachos',
+  'Raleio de frutos',
+  'Amarração / condução',
+  'Desfolha',
+  'Anelamento',
+  'Ensacamento',
+  'Capina / roçagem',
+  'Limpeza de área',
+] as const
+
+/** Formas de aplicar adubo. */
+export const FERT_METHODS = ['A lanço', 'Em cova / sulco', 'Fertirrigação', 'Foliar', 'Incorporado'] as const
 
 export const ORDER_STATUS = ['aberta', 'concluida', 'cancelada'] as const
 export type OrderStatus = (typeof ORDER_STATUS)[number]

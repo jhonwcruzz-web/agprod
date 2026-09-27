@@ -10,7 +10,7 @@ import {
   ProhibitIcon,
   WhatsappLogoIcon,
 } from '@phosphor-icons/react/dist/ssr'
-import { completeSprayOrder, setOrderStatus } from '@/lib/actions/orders'
+import { completeFertOrder, completeSprayOrder, setOrderStatus } from '@/lib/actions/orders'
 import { today } from '@/lib/format'
 import { whatsappPhone, type OrderKind, type OrderStatus } from '@/lib/orders'
 
@@ -102,13 +102,14 @@ export function OrderActions({
         </button>
 
         {status === 'aberta' &&
-          (kind === 'pulverizacao' ? (
+          (kind === 'pulverizacao' || kind === 'adubacao' ? (
             <button
               type="button"
               disabled={pending}
               onClick={() => {
-                if (window.confirm('Marcar a pulverização como feita hoje? O estoque é baixado e o custo lançado.'))
-                  run(() => completeSprayOrder(id, today()))
+                const what = kind === 'adubacao' ? 'a adubação' : 'a pulverização'
+                if (window.confirm(`Marcar ${what} como feita hoje? O estoque é baixado e o custo lançado.`))
+                  run(() => (kind === 'adubacao' ? completeFertOrder(id, today()) : completeSprayOrder(id, today())))
               }}
               className={btn}
             >
@@ -117,7 +118,8 @@ export function OrderActions({
           ) : (
             completeHref && (
               <Link href={completeHref} className={btn}>
-                <CheckIcon size={15} weight="bold" /> {kind === 'colheita' ? 'Registrar colheita' : 'Registrar manutenção'}
+                <CheckIcon size={15} weight="bold" />{' '}
+                {kind === 'colheita' ? 'Registrar colheita' : kind === 'manutencao' ? 'Registrar manutenção' : 'Concluir'}
               </Link>
             )
           ))}

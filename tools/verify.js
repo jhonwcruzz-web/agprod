@@ -423,6 +423,17 @@ async function main() {
     farm_id: farmB.id, number: 0, kind: 'manutencao', machine_id: tractor.id, scheduled_date: '2026-09-25',
   })
   checkTrue('B nao cria OS com a maquina de A', !!osOtherFarmMachine, osOtherFarmMachine ? '' : 'insercao aceita')
+  // Itens (adubos) da OS: B nao le nem grava na OS de A, nem usa produto de A.
+  const { error: itemAErr } = await a.client.from('service_order_items').insert({
+    farm_id: farmA.id, service_order_id: os1.id, product_id: diesel.id, dose: 1, dose_unit: 'kg/ha', quantity: 1,
+  })
+  check('A grava item na propria OS', itemAErr ? itemAErr.message : 'ok', 'ok')
+  const { data: itemsSeenByB } = await b.client.from('service_order_items').select('id').eq('service_order_id', os1.id)
+  check('B nao ve itens da OS de A', (itemsSeenByB ?? []).length, 0)
+  const { error: itemCrossErr } = await b.client.from('service_order_items').insert({
+    farm_id: farmB.id, service_order_id: os1.id, product_id: diesel.id, dose: 1, dose_unit: 'kg/ha', quantity: 1,
+  })
+  checkTrue('B nao grava item na OS de A', !!itemCrossErr, itemCrossErr ? '' : 'insercao aceita')
   await a.client.from('service_orders').delete().in('id', [os1.id, os2.id])
 
   // O talhao de B so' existia para esta checagem (as de RLS contam talhoes de B).

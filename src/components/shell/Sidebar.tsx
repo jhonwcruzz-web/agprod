@@ -35,7 +35,7 @@ export function Sidebar() {
   return (
     <nav
       aria-label="Navegação principal"
-      className="flex h-full flex-col gap-6 overflow-y-auto px-3 py-4"
+      className="relative flex h-full flex-col gap-6 overflow-y-auto px-3 py-4"
     >
       {groups.map((g) => (
         <div key={g}>

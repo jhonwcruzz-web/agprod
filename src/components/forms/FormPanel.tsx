@@ -120,6 +120,7 @@ export type PlotOption = {
   area: number
   crop_id?: string | null
   variety_id?: string | null
+  plant_count?: number | null
 }
 export type Option = { id: string; name: string }
 export type VarietyOption = Option & { crop_id: string }

@@ -10,7 +10,7 @@ import { Field, Input } from '@/components/ui/Field'
 function Submit() {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" size="lg" disabled={pending} className="w-full">
+    <Button type="submit" variant="ink" size="lg" disabled={pending} className="w-full">
       {pending ? 'Entrando…' : 'Entrar'}
     </Button>
   )

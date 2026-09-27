@@ -46,6 +46,15 @@ export async function getServiceOrderDetail(id: string, farmId: string) {
         .order('created_at')
     : { data: [] }
 
+  const { data: items } = os.kind === 'adubacao'
+    ? await supabase
+        .from('service_order_items')
+        .select('id, dose, dose_unit, quantity, products(name, unit, active_ingredient)')
+        .eq('service_order_id', id)
+        .eq('farm_id', farmId)
+        .order('sort')
+    : { data: [] }
+
   const plot = os.plots as {
     code: string
     name: string | null
@@ -65,7 +74,21 @@ export async function getServiceOrderDetail(id: string, farmId: string) {
     machine: os.machine as MachineRef,
     implement: os.implement as MachineRef,
     farm,
-    products: (apps ?? []).map((a) => ({
+    products: os.kind === 'adubacao'
+      ? (items ?? []).map((it) => {
+          const p = it.products as { name: string; unit: string; active_ingredient: string | null } | null
+          return {
+            id: it.id,
+            name: p?.name ?? '—',
+            activeIngredient: p?.active_ingredient ?? null,
+            dose: Number(it.dose),
+            doseUnit: it.dose_unit as string | null,
+            total: Number(it.quantity),
+            unit: p?.unit ?? '',
+            done: os.status === 'concluida',
+          }
+        })
+      : (apps ?? []).map((a) => ({
       id: a.id,
       name: a.product_name,
       activeIngredient: a.active_ingredient,

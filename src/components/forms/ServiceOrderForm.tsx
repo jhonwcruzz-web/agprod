@@ -7,9 +7,9 @@ import { Field, Input, InputWithUnit, Select, Textarea } from '@/components/ui/F
 import { FormGrid, FormPanel, type PlotOption, type VarietyOption } from './FormPanel'
 import { MachinePair, PlotSelect, ProductSelect, usePlotVariety, type MachineOption, type StockProduct } from './fields'
 import { saveServiceOrder } from '@/lib/actions/orders'
-import { DOSE_UNITS, parseBr, sprayQuantity, toBr } from '@/lib/calc'
-import { num, today } from '@/lib/format'
-import { ORDER_KIND_LABEL, orderNumber, sprayMix, type OrderKind } from '@/lib/orders'
+import { DOSE_UNITS, FERT_DOSE_UNITS, fertQuantity, parseBr, sprayQuantity, toBr } from '@/lib/calc'
+import { money, num, today } from '@/lib/format'
+import { CULTURAL_ACTIVITIES, FERT_METHODS, ORDER_KIND_LABEL, orderNumber, sprayMix, type OrderKind } from '@/lib/orders'
 import type { Tables } from '@/lib/types/database'
 
 const DEFAULT_DOSE_UNIT: Record<string, string> = { L: 'L/ha', mL: 'mL/ha', kg: 'kg/ha', g: 'g/ha' }
@@ -23,6 +23,26 @@ const DESCRIPTION: Record<OrderKind, string> = {
     'Monte a calda com um ou mais produtos do estoque. Quantidades por área e por tanque saem calculadas no PDF. Ao concluir, a baixa e o custo são lançados.',
   colheita: 'O que colher, onde e para onde vai. Ao registrar a colheita feita, a ordem é concluída.',
   manutencao: 'Máquina e lista do que fazer. Ao registrar a manutenção feita, a ordem é concluída.',
+  adubacao:
+    'Um ou mais adubos do estoque, com dose por hectare ou por planta. A quantidade total sai calculada. Ao concluir, a baixa e o custo são lançados.',
+  tratos:
+    'Poda, desbrota, raleio e outros tratos: turma, diárias e valor da diária. Ao concluir, a mão de obra entra no custo do talhão.',
+}
+
+const ASSIGNEE_LABEL: Record<OrderKind, string> = {
+  pulverizacao: 'Aplicador',
+  adubacao: 'Operador',
+  tratos: 'Encarregado da turma',
+  colheita: 'Encarregado da turma',
+  manutencao: 'Mecânico / oficina',
+}
+
+const INSTRUCTIONS_HINT: Record<OrderKind, string> = {
+  pulverizacao: 'Começar pelas linhas 1 a 20. Não pulverizar após as 10h.',
+  adubacao: 'Distribuir na projeção da copa. Irrigar logo após a aplicação.',
+  tratos: 'Deixar 2 ramos por esporão. Retirar feminelas.',
+  colheita: 'Colher só cachos com 16 °Brix. Caixas limpas.',
+  manutencao: 'Usar óleo 15W40. Avisar se encontrar vazamento.',
 }
 
 export function ServiceOrderForm({
@@ -55,6 +75,9 @@ export function ServiceOrderForm({
   defaultMachineId?: string
 }) {
   const editing = !!initial?.id
+  const hasLines = kind === 'pulverizacao' || kind === 'adubacao'
+  const units: readonly string[] = kind === 'adubacao' ? FERT_DOSE_UNITS : DOSE_UNITS
+  const defaultUnit = kind === 'adubacao' ? 'kg/ha' : 'L/ha'
   const pv = usePlotVariety(plots, varieties, {
     plotId: initial?.plot_id ?? defaultPlotId,
     varietyId: initial?.variety_id,
@@ -64,16 +87,16 @@ export function ServiceOrderForm({
   // Chaves das linhas: comecam em 0 no servidor e no navegador (os ids dos
   // campos dependem delas; contador global dava ids diferentes na hidratacao).
   const nextKey = useRef(initialLines?.length || 1)
-  const blankLine = (): Line => ({ key: nextKey.current++, productId: '', dose: '', unit: 'L/ha' })
+  const blankLine = (): Line => ({ key: nextKey.current++, productId: '', dose: '', unit: defaultUnit })
   const [lines, setLines] = useState<Line[]>(() =>
     initialLines?.length
       ? initialLines.map((l, i) => ({
           key: i,
           productId: l.product_id,
           dose: toBr(l.dose, 4),
-          unit: l.dose_unit ?? 'L/ha',
+          unit: l.dose_unit ?? defaultUnit,
         }))
-      : [{ key: 0, productId: '', dose: '', unit: 'L/ha' }],
+      : [{ key: 0, productId: '', dose: '', unit: defaultUnit }],
   )
   const [areaTxt, setAreaTxt] = useState(toBr(initial?.area ?? null, 4))
   const [sprayTxt, setSprayTxt] = useState(toBr(initial?.spray_volume ?? null, 2))
@@ -85,6 +108,28 @@ export function ServiceOrderForm({
   const tankL = parseBr(tankTxt)
   const mix = sprayMix(areaHa, sprayLha, tankL)
 
+  // tratos: trato da lista ou "outro" digitado; custo previsto = diarias x diaria
+  const known = (CULTURAL_ACTIVITIES as readonly string[]).includes(initial?.activity ?? '')
+  const [activity, setActivity] = useState(initial?.activity ? (known ? initial.activity : 'outro') : '')
+  const [daysTxt, setDaysTxt] = useState(toBr(initial?.labor_days ?? null, 1))
+  const [rateTxt, setRateTxt] = useState(toBr(initial?.daily_rate ?? null, 2))
+  const days = parseBr(daysTxt)
+  const rate = parseBr(rateTxt)
+
+  function lineQty(l: Line, unit: string | null) {
+    const dose = parseBr(l.dose)
+    return kind === 'adubacao'
+      ? fertQuantity({
+          dose,
+          doseUnit: l.unit,
+          areaHa,
+          plotAreaHa: plot ? Number(plot.area) : null,
+          plants: plot?.plant_count ?? null,
+          productUnit: unit,
+        })
+      : sprayQuantity({ dose, doseUnit: l.unit, areaHa, sprayLha, productUnit: unit })
+  }
+
   function updateLine(key: number, patch: Partial<Line>) {
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)))
   }
@@ -92,7 +137,9 @@ export function ServiceOrderForm({
     const p = products.find((x) => x.id === id)
     setLines((ls) =>
       ls.map((l) =>
-        l.key === key ? { ...l, productId: id, unit: !l.dose && p && DEFAULT_DOSE_UNIT[p.unit] ? DEFAULT_DOSE_UNIT[p.unit] : l.unit } : l,
+        l.key === key
+          ? { ...l, productId: id, unit: !l.dose && p && units.includes(DEFAULT_DOSE_UNIT[p.unit]) ? DEFAULT_DOSE_UNIT[p.unit] : l.unit }
+          : l,
       ),
     )
   }
@@ -139,7 +186,7 @@ export function ServiceOrderForm({
           <PlotSelect plots={plots} value={pv.plotId} onChange={pv.selectPlot} required />
         )}
 
-        <Field label={kind === 'manutencao' ? 'Mecânico / oficina' : kind === 'colheita' ? 'Encarregado da turma' : 'Aplicador'} htmlFor="assignee">
+        <Field label={ASSIGNEE_LABEL[kind]} htmlFor="assignee">
           <Input id="assignee" name="assignee" defaultValue={initial?.assignee ?? ''} placeholder="Nome de quem executa" />
         </Field>
 
@@ -211,6 +258,98 @@ export function ServiceOrderForm({
           </>
         )}
 
+        {kind === 'adubacao' && (
+          <>
+            <MachinePair
+              tractors={tractors}
+              implements={impls}
+              machineId={initial?.machine_id}
+              implementId={initial?.implement_id}
+            />
+            <Field
+              label="Área a adubar"
+              htmlFor="area"
+              hint={
+                plot
+                  ? `Vazio = talhão inteiro (${num(Number(plot.area), 2)} ha${plot.plant_count ? ` · ${num(plot.plant_count)} plantas` : ''}).`
+                  : undefined
+              }
+            >
+              <InputWithUnit
+                id="area"
+                name="area"
+                unit="ha"
+                inputMode="decimal"
+                value={areaTxt}
+                onChange={(e) => setAreaTxt(e.target.value)}
+                placeholder={plot ? toBr(Number(plot.area), 2) : ''}
+              />
+            </Field>
+            <Field label="Forma de aplicação" htmlFor="application_method">
+              <Select id="application_method" name="application_method" defaultValue={initial?.application_method ?? ''}>
+                <option value="">—</option>
+                {FERT_METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </>
+        )}
+
+        {kind === 'tratos' && (
+          <>
+            <Field label="Trato cultural" htmlFor="activity_pick" required>
+              <Select id="activity_pick" value={activity} onChange={(e) => setActivity(e.target.value)} required>
+                <option value="">—</option>
+                {CULTURAL_ACTIVITIES.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+                <option value="outro">Outro…</option>
+              </Select>
+            </Field>
+            {activity === 'outro' ? (
+              <Field label="Qual trato" htmlFor="activity" required>
+                <Input id="activity" name="activity" required defaultValue={known ? '' : (initial?.activity ?? '')} placeholder="Ex.: Pinçamento" />
+              </Field>
+            ) : (
+              <input type="hidden" name="activity" value={activity} />
+            )}
+            <Field label="Tamanho da turma" htmlFor="team_size">
+              <InputWithUnit id="team_size" name="team_size" unit="pessoas" inputMode="numeric" defaultValue={initial?.team_size ?? ''} placeholder="6" />
+            </Field>
+            <Field label="Diárias previstas" htmlFor="labor_days" hint="Pessoas x dias. Ex.: 6 pessoas por 2 dias = 12.">
+              <InputWithUnit
+                id="labor_days"
+                name="labor_days"
+                unit="diárias"
+                inputMode="decimal"
+                value={daysTxt}
+                onChange={(e) => setDaysTxt(e.target.value)}
+                placeholder="12"
+              />
+            </Field>
+            <Field
+              label="Valor da diária"
+              htmlFor="daily_rate"
+              hint={days && rate ? `Mão de obra prevista: ${money(days * rate)}.` : undefined}
+            >
+              <InputWithUnit
+                id="daily_rate"
+                name="daily_rate"
+                unit="R$"
+                inputMode="decimal"
+                value={rateTxt}
+                onChange={(e) => setRateTxt(e.target.value)}
+                placeholder="80,00"
+              />
+            </Field>
+          </>
+        )}
+
         {kind === 'colheita' && (
           <>
             <Field label="Variedade" htmlFor="variety_id" hint={pv.hint}>
@@ -277,14 +416,16 @@ export function ServiceOrderForm({
         )}
       </FormGrid>
 
-      {kind === 'pulverizacao' && (
+      {hasLines && (
         <fieldset className="mt-6">
-          <legend className="text-[13px] font-medium text-text-muted">Produtos da calda</legend>
+          <legend className="text-[13px] font-medium text-text-muted">
+            {kind === 'adubacao' ? 'Adubos' : 'Produtos da calda'}
+          </legend>
           <div className="mt-2 flex flex-col gap-3">
             {lines.map((l, i) => {
               const p = products.find((x) => x.id === l.productId)
-              const q = sprayQuantity({ dose: parseBr(l.dose), doseUnit: l.unit, areaHa, sprayLha, productUnit: p?.unit ?? null })
-              const perTank = q.ok && mix.totalL && tankL ? (q.quantity * tankL) / mix.totalL : null
+              const q = lineQty(l, p?.unit ?? null)
+              const perTank = kind === 'pulverizacao' && q.ok && mix.totalL && tankL ? (q.quantity * tankL) / mix.totalL : null
               return (
                 <div key={l.key} className="grid gap-3 rounded-md border border-line p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
                   <ProductSelect
@@ -313,7 +454,7 @@ export function ServiceOrderForm({
                       value={l.unit}
                       onChange={(e) => updateLine(l.key, { unit: e.target.value })}
                     >
-                      {DOSE_UNITS.map((u) => (
+                      {units.map((u) => (
                         <option key={u} value={u}>
                           {u}
                         </option>
@@ -349,12 +490,12 @@ export function ServiceOrderForm({
             onClick={() => setLines((ls) => [...ls, blankLine()])}
             className="press mt-3 inline-flex items-center gap-1.5 rounded-md border border-dashed border-line-strong px-3 py-2 text-sm text-text-muted hover:border-accent hover:text-accent-text"
           >
-            <PlusIcon size={14} weight="bold" /> Adicionar produto à calda
+            <PlusIcon size={14} weight="bold" /> {kind === 'adubacao' ? 'Adicionar adubo' : 'Adicionar produto à calda'}
           </button>
         </fieldset>
       )}
 
-      {kind === 'manutencao' && (
+      {(kind === 'manutencao' || kind === 'tratos') && (
         <div className="mt-5">
           <Field label="O que fazer" htmlFor="checklist" hint="Um item por linha — vira uma lista para marcar no PDF.">
             <Textarea
@@ -362,7 +503,11 @@ export function ServiceOrderForm({
               name="checklist"
               rows={5}
               defaultValue={initial?.checklist ?? ''}
-              placeholder={'Trocar óleo do motor\nTrocar filtro de óleo\nEngraxar articulações\nVerificar pneus'}
+              placeholder={
+                kind === 'tratos'
+                  ? 'Linhas 1 a 30\nDeixar 2 brotos por esporão\nRecolher ramos das entrelinhas'
+                  : 'Trocar óleo do motor\nTrocar filtro de óleo\nEngraxar articulações\nVerificar pneus'
+              }
             />
           </Field>
         </div>
@@ -375,13 +520,7 @@ export function ServiceOrderForm({
             name="instructions"
             rows={3}
             defaultValue={initial?.instructions ?? ''}
-            placeholder={
-              kind === 'pulverizacao'
-                ? 'Começar pelas linhas 1 a 20. Não pulverizar após as 10h.'
-                : kind === 'colheita'
-                  ? 'Colher só cachos com 16 °Brix. Caixas limpas.'
-                  : 'Usar óleo 15W40. Avisar se encontrar vazamento.'
-            }
+            placeholder={INSTRUCTIONS_HINT[kind]}
           />
         </Field>
       </div>

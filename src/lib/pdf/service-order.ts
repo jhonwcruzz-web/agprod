@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from 'pdf-lib'
 import { APP_NAME } from '@/lib/config'
-import { date, LOG_TYPE_LABEL, meterUnit, num, UNIT_LABEL } from '@/lib/format'
+import { date, LOG_TYPE_LABEL, meterUnit, money, num, UNIT_LABEL } from '@/lib/format'
 import { formatPhone, ORDER_KIND_LABEL, ORDER_STATUS_LABEL, orderNumber, sprayMix } from '@/lib/orders'
 import type { ServiceOrderDetail } from '@/lib/queries/orders'
 
@@ -378,6 +378,86 @@ export async function buildServiceOrderPdf(os: ServiceOrderDetail): Promise<Uint
       9.5,
       MUTED,
     )
+  } else if (os.kind === 'adubacao') {
+    const areaHa = os.area === null ? (os.plot ? Number(os.plot.area) : null) : Number(os.area)
+    const plotArea = os.plot ? Number(os.plot.area) : null
+    // plantas na area adubada (proporcional quando e' so' parte do talhao)
+    const plants =
+      os.plot?.plant_count && areaHa && plotArea
+        ? Math.round(os.plot.plant_count * Math.min(1, areaHa / plotArea))
+        : (os.plot?.plant_count ?? null)
+
+    d.section('Local')
+    d.fields([
+      ['Talhão', plotName],
+      ['Cultura / variedade', cropVar],
+      ['Área a adubar', areaHa ? `${num(areaHa, 2)} ha` : null],
+      ['Plantas', plants ? num(plants) : null],
+    ], 4)
+
+    d.section('Aplicação')
+    d.fields([
+      ['Forma de aplicação', os.application_method],
+      ['Trator', machineLine(os.machine)],
+      ['Implemento', machineLine(os.implement)],
+    ], 3)
+
+    d.section('Adubos')
+    const perPlant = (total: number | null, unit: string) => {
+      if (total === null || !plants) return '—'
+      const each = total / plants
+      // por planta fica mais legivel em g / mL
+      if (unit === 'kg' && each < 1) return `${num(each * 1000, 2)} g`
+      if (unit === 'L' && each < 1) return `${num(each * 1000, 2)} mL`
+      return qty(each, unit)
+    }
+    d.table(
+      [
+        { header: 'Adubo', width: 34 },
+        { header: 'Dose', width: 20, align: 'right' },
+        { header: 'Total na área', width: 22, align: 'right' },
+        { header: 'Por planta', width: 20, align: 'right' },
+      ],
+      os.products.map((p) => [
+        p.name,
+        p.dose === null ? '—' : `${num(p.dose, 2)} ${p.doseUnit ?? ''}`,
+        qty(p.total, p.unit),
+        perPlant(p.total, p.unit),
+      ]),
+    )
+
+    d.section('Segurança')
+    d.paragraph(
+      'Use luvas, botas e máscara ao manusear adubos. Não aplique com o solo encharcado nem antes de chuva forte. ' +
+        'Mantenha as sobras em local seco e coberto, longe de crianças e animais.',
+      9.5,
+      MUTED,
+    )
+  } else if (os.kind === 'tratos') {
+    d.section('Local')
+    d.fields([
+      ['Talhão', plotName],
+      ['Cultura / variedade', cropVar],
+      ['Área', os.plot ? `${num(Number(os.plot.area), 2)} ha` : null],
+      ['Plantas', os.plot?.plant_count ? num(os.plot.plant_count) : null],
+    ], 4)
+
+    const days = os.labor_days === null ? null : Number(os.labor_days)
+    const rate = os.daily_rate === null ? null : Number(os.daily_rate)
+    d.section('Serviço')
+    d.fields([
+      ['Trato cultural', os.activity],
+      ['Tamanho da turma', os.team_size ? `${os.team_size} pessoas` : null],
+      ['Diárias previstas', days ? num(days, 1) : null],
+      ['Valor da diária', rate ? money(rate) : null],
+      ['Mão de obra prevista', days && rate ? money(days * rate) : null],
+    ], 3)
+
+    const items = (os.checklist ?? '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
+    if (items.length) {
+      d.section('O que fazer')
+      d.checklist(items)
+    }
   } else if (os.kind === 'colheita') {
     d.section('Local')
     d.fields([
@@ -423,6 +503,20 @@ export async function buildServiceOrderPdf(os: ServiceOrderDetail): Promise<Uint
   d.section('Preencher na execução')
   if (os.kind === 'pulverizacao') {
     d.blanks(['Data', 'Hora início', 'Hora fim', 'Tanques aplicados', 'Temperatura (°C)', 'Umidade (%)', 'Vento (km/h)', 'Horímetro'], 4)
+  } else if (os.kind === 'adubacao') {
+    d.blanks(['Data', 'Hora início', 'Hora fim', 'Horímetro'], 4)
+  } else if (os.kind === 'tratos') {
+    d.table(
+      [
+        { header: 'Data', width: 16 },
+        { header: 'Nº de pessoas', width: 16 },
+        { header: 'Início', width: 12 },
+        { header: 'Fim', width: 12 },
+        { header: 'Linhas / plantas feitas', width: 44 },
+      ],
+      Array.from({ length: 5 }, () => ['', '', '', '', '']),
+      24,
+    )
   } else if (os.kind === 'colheita') {
     d.table(
       [
@@ -449,9 +543,11 @@ export async function buildServiceOrderPdf(os: ServiceOrderDetail): Promise<Uint
   d.signatures(
     os.kind === 'pulverizacao'
       ? ['Produtor / responsável técnico', 'Aplicador']
-      : os.kind === 'colheita'
-        ? ['Produtor', 'Encarregado da turma']
-        : ['Produtor', 'Mecânico / oficina'],
+      : os.kind === 'adubacao'
+        ? ['Produtor / responsável técnico', 'Operador']
+        : os.kind === 'colheita' || os.kind === 'tratos'
+          ? ['Produtor', 'Encarregado da turma']
+          : ['Produtor', 'Mecânico / oficina'],
   )
 
   // ------------------------------------------------------------ rodape

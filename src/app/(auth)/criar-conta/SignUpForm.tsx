@@ -10,7 +10,7 @@ import { Field, Input } from '@/components/ui/Field'
 function Submit() {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" size="lg" disabled={pending} className="w-full">
+    <Button type="submit" variant="ink" size="lg" disabled={pending} className="w-full">
       {pending ? 'Criando…' : 'Criar conta'}
     </Button>
   )
@@ -21,9 +21,9 @@ export function SignUpForm() {
 
   if (state.message) {
     return (
-      <div className="mt-8 flex items-start gap-3 rounded-lg bg-accent-soft px-4 py-4">
-        <CheckCircleIcon size={20} weight="fill" className="mt-px shrink-0 text-accent" />
-        <p className="text-sm text-accent-text">{state.message}</p>
+      <div className="mt-8 flex items-start gap-3 rounded-lg border border-line bg-bg-raised px-4 py-4">
+        <CheckCircleIcon size={20} weight="fill" className="mt-px shrink-0 text-text" />
+        <p className="text-sm text-text">{state.message}</p>
       </div>
     )
   }

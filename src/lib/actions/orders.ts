@@ -12,7 +12,7 @@ import {
   optionalUuid,
   requireWriteContext,
 } from './shared'
-import { DOSE_UNITS, parseBr, round, sprayQuantity, stockCost } from '@/lib/calc'
+import { DOSE_UNITS, FERT_DOSE_UNITS, fertQuantity, parseBr, round, sprayQuantity, stockCost } from '@/lib/calc'
 import { ORDER_KIND_LABEL, orderNumber } from '@/lib/orders'
 
 const UUID = /^[0-9a-f-]{36}$/i
@@ -23,7 +23,7 @@ function refresh() {
 }
 
 const orderSchema = z.object({
-  kind: z.enum(['pulverizacao', 'colheita', 'manutencao'], 'Tipo de ordem inválido'),
+  kind: z.enum(['pulverizacao', 'adubacao', 'tratos', 'colheita', 'manutencao'], 'Tipo de ordem inválido'),
   scheduled_date: z.iso.date('Informe a data prevista'),
   plot_id: optionalUuid,
   machine_id: optionalUuid,
@@ -41,28 +41,35 @@ const orderSchema = z.object({
   team_size: decimal,
   log_type: z.enum(['preventiva', 'corretiva', 'revisao']).optional().transform((v) => v ?? null),
   checklist: optionalText,
+  activity: optionalText,
+  application_method: optionalText,
+  labor_days: decimal,
+  daily_rate: decimal,
 })
 
-type SprayLine = { product_id: string; dose: number; dose_unit: string }
+type Line = { product_id: string; dose: number; dose_unit: string }
 
-/** Linhas da calda: product_id[], dose[], dose_unit[] na mesma ordem. */
-function readSprayLines(formData: FormData): SprayLine[] | { error: string } {
+/**
+ * Linhas de produto (calda da pulverizacao, adubos da adubacao):
+ * line_product_id[], line_dose[], line_dose_unit[] na mesma ordem.
+ */
+function readLines(formData: FormData, allowed: readonly string[], what: string): Line[] | { error: string } {
   const ids = formData.getAll('line_product_id').map(String)
   const doses = formData.getAll('line_dose').map(String)
   const units = formData.getAll('line_dose_unit').map(String)
-  const lines: SprayLine[] = []
+  const lines: Line[] = []
   for (let i = 0; i < ids.length; i++) {
     if (!ids[i] && !doses[i]) continue // linha vazia
     if (!UUID.test(ids[i])) return { error: `Escolha o produto da linha ${i + 1}.` }
     const dose = parseBr(doses[i] ?? '')
     if (dose === null || dose <= 0) return { error: `Informe a dose da linha ${i + 1}.` }
     const unit = units[i] ?? ''
-    if (!(DOSE_UNITS as readonly string[]).includes(unit)) return { error: `Unidade de dose inválida na linha ${i + 1}.` }
+    if (!allowed.includes(unit)) return { error: `Unidade de dose inválida na linha ${i + 1}.` }
     lines.push({ product_id: ids[i], dose, dose_unit: unit })
   }
-  if (lines.length === 0) return { error: 'Inclua pelo menos um produto na calda.' }
+  if (lines.length === 0) return { error: `Inclua pelo menos um produto ${what}.` }
   if (new Set(lines.map((l) => l.product_id)).size !== lines.length)
-    return { error: 'O mesmo produto aparece duas vezes na calda.' }
+    return { error: `O mesmo produto aparece duas vezes ${what}.` }
   return lines
 }
 
@@ -108,13 +115,60 @@ export async function saveServiceOrder(_prev: ActionState, formData: FormData): 
     team_size: null as number | null,
     log_type: null as 'preventiva' | 'corretiva' | 'revisao' | null,
     checklist: null as string | null,
+    activity: null as string | null,
+    application_method: null as string | null,
+    labor_days: null as number | null,
+    daily_rate: null as number | null,
   }
 
   // --- validacao e calculo por tipo, antes de gravar qualquer coisa
   let appRows: Record<string, unknown>[] = []
-  if (d.kind === 'pulverizacao') {
+  let itemRows: Record<string, unknown>[] = []
+  if (d.kind === 'adubacao') {
     if (!d.plot_id) return { error: 'Escolha o talhão.' }
-    const lines = readSprayLines(formData)
+    const lines = readLines(formData, FERT_DOSE_UNITS, 'na adubação')
+    if ('error' in lines) return lines
+    const [{ data: plot }, { data: products }] = await Promise.all([
+      w.supabase.from('plots').select('area, plant_count').eq('id', d.plot_id).eq('farm_id', w.ctx.farm.id).maybeSingle(),
+      w.supabase.from('products').select('id, name, unit').eq('farm_id', w.ctx.farm.id).in('id', lines.map((l) => l.product_id)),
+    ])
+    if (!plot) return { error: 'Talhão não encontrado.' }
+    const area = d.area ?? Number(plot.area)
+    for (const [i, l] of lines.entries()) {
+      const p = (products ?? []).find((x) => x.id === l.product_id)
+      if (!p) return { error: `Produto da linha ${i + 1} não encontrado no estoque.` }
+      const q = fertQuantity({
+        dose: l.dose,
+        doseUnit: l.dose_unit,
+        areaHa: area,
+        plotAreaHa: Number(plot.area),
+        plants: plot.plant_count,
+        productUnit: p.unit,
+      })
+      if (!q.ok) return { error: `${p.name}: ${q.reason}` }
+      itemRows.push({ product_id: p.id, dose: l.dose, dose_unit: l.dose_unit, quantity: q.quantity, sort: i })
+    }
+    Object.assign(base, {
+      plot_id: d.plot_id,
+      machine_id: d.machine_id,
+      implement_id: d.implement_id,
+      area,
+      application_method: d.application_method,
+    })
+  } else if (d.kind === 'tratos') {
+    if (!d.plot_id) return { error: 'Escolha o talhão.' }
+    if (!d.activity) return { error: 'Escolha o trato cultural.' }
+    Object.assign(base, {
+      plot_id: d.plot_id,
+      activity: d.activity,
+      team_size: teamSize,
+      labor_days: d.labor_days,
+      daily_rate: d.daily_rate,
+      checklist: d.checklist,
+    })
+  } else if (d.kind === 'pulverizacao') {
+    if (!d.plot_id) return { error: 'Escolha o talhão.' }
+    const lines = readLines(formData, DOSE_UNITS, 'na calda')
     if ('error' in lines) return lines
 
     const [{ data: plot }, { data: products }] = await Promise.all([
@@ -226,6 +280,18 @@ export async function saveServiceOrder(_prev: ActionState, formData: FormData): 
     }
   }
 
+  // --- adubos: refeitos a cada edicao (OS aberta ainda nao mexeu no estoque)
+  if (d.kind === 'adubacao' && orderId) {
+    await w.supabase.from('service_order_items').delete().eq('service_order_id', orderId).eq('farm_id', w.ctx.farm.id)
+    const { error } = await w.supabase
+      .from('service_order_items')
+      .insert(itemRows.map((r) => ({ ...r, farm_id: w.ctx.farm.id, service_order_id: orderId })) as never)
+    if (error) {
+      if (!id) await w.supabase.from('service_orders').delete().eq('id', orderId).eq('farm_id', w.ctx.farm.id)
+      return { error: dbError(error.message) }
+    }
+  }
+
   refresh()
   return {
     message: id
@@ -280,6 +346,144 @@ export async function completeSprayOrder(id: string, date: string): Promise<{ er
 
   refresh()
   return {}
+}
+
+/**
+ * Conclui a OS de adubacao: cada adubo vira uma adubacao realizada no
+ * talhao (baixa de estoque e custo pelo custo medio do dia).
+ */
+export async function completeFertOrder(id: string, date: string): Promise<{ error?: string }> {
+  const w = await requireWriteContext()
+  if ('error' in w) return { error: w.error }
+  if (!UUID.test(id) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Dados inválidos.' }
+
+  const { data: os } = await w.supabase
+    .from('service_orders')
+    .select('kind, status, number, plot_id, season_id, machine_id, implement_id, area, application_method, assignee')
+    .eq('id', id)
+    .eq('farm_id', w.ctx.farm.id)
+    .maybeSingle()
+  if (!os || os.kind !== 'adubacao') return { error: 'Ordem de adubação não encontrada.' }
+  if (os.status !== 'aberta') return { error: 'Esta ordem já foi encerrada.' }
+
+  const { data: items } = await w.supabase
+    .from('service_order_items')
+    .select('product_id, dose, dose_unit, quantity, products(name, unit, unit_cost)')
+    .eq('service_order_id', id)
+    .eq('farm_id', w.ctx.farm.id)
+    .order('sort')
+  if (!items?.length) return { error: 'A ordem não tem adubos.' }
+
+  const area = os.area === null ? null : Number(os.area)
+  const rows = items.map((it) => {
+    const p = it.products as { name: string; unit: 'kg' | 't' | 'caixa' | 'unidade' | 'L' | 'g' | 'mL' | 'saco' | 'dose'; unit_cost: number }
+    const qty = Number(it.quantity)
+    return {
+      farm_id: w.ctx.farm.id,
+      season_id: os.season_id ?? w.ctx.season?.id ?? null,
+      created_by: w.ctx.userId,
+      plot_id: os.plot_id,
+      product_id: it.product_id,
+      product_name: p.name,
+      quantity: qty,
+      unit: p.unit,
+      dose_per_ha: area ? round(qty / area, 4) : null,
+      area,
+      cost: stockCost(qty, Number(p.unit_cost)) ?? 0,
+      application_method: os.application_method,
+      machine_id: os.machine_id,
+      implement_id: os.implement_id,
+      responsible: os.assignee,
+      fertilization_date: date,
+      notes: `OS ${orderNumber(os.number)} · dose ${String(it.dose).replace('.', ',')} ${it.dose_unit}`,
+      service_order_id: id,
+    }
+  })
+  const { error: fe } = await w.supabase.from('fertilizations').insert(rows)
+  if (fe) return { error: dbError(fe.message) }
+
+  const { error } = await w.supabase
+    .from('service_orders')
+    .update({ status: 'concluida', completed_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('farm_id', w.ctx.farm.id)
+  if (error) return { error: dbError(error.message) }
+
+  refresh()
+  revalidatePath('/adubacao')
+  return {}
+}
+
+const tratosDoneSchema = z.object({
+  id: z.string().regex(UUID, 'Ordem inválida'),
+  done_date: z.iso.date('Informe a data'),
+  labor_days: decimal,
+  daily_rate: decimal,
+  labor_cost: decimal,
+  notes: optionalText,
+})
+
+/**
+ * Conclui a OS de tratos culturais. A mao de obra (diarias x valor, ou o
+ * valor digitado) vira despesa do talhao na categoria Mao de obra.
+ */
+export async function completeTratosOrder(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const w = await requireWriteContext()
+  if ('error' in w) return { error: w.error }
+  const parsed = tratosDoneSchema.safeParse(formToObject(formData))
+  if (!parsed.success) return { error: firstIssue(parsed.error) }
+  const d = parsed.data
+
+  const { data: os } = await w.supabase
+    .from('service_orders')
+    .select('kind, status, number, plot_id, season_id, activity')
+    .eq('id', d.id)
+    .eq('farm_id', w.ctx.farm.id)
+    .maybeSingle()
+  if (!os || os.kind !== 'tratos') return { error: 'Ordem de tratos culturais não encontrada.' }
+  if (os.status !== 'aberta') return { error: 'Esta ordem já foi encerrada.' }
+
+  const auto = d.labor_days !== null && d.daily_rate !== null ? round(d.labor_days * d.daily_rate, 2) : null
+  const cost = d.labor_cost ?? auto ?? 0
+
+  if (cost > 0) {
+    const { error } = await w.supabase.from('expenses').insert({
+      farm_id: w.ctx.farm.id,
+      season_id: os.season_id ?? w.ctx.season?.id ?? null,
+      created_by: w.ctx.userId,
+      plot_id: os.plot_id,
+      category: 'mao_de_obra',
+      description: `${os.activity ?? 'Tratos culturais'} — OS ${orderNumber(os.number)}`,
+      amount: cost,
+      expense_date: d.done_date,
+      status: 'pago',
+      paid_amount: cost,
+      notes: d.notes,
+      service_order_id: d.id,
+    })
+    if (error) return { error: dbError(error.message) }
+  }
+
+  const { error } = await w.supabase
+    .from('service_orders')
+    .update({
+      status: 'concluida',
+      completed_at: new Date().toISOString(),
+      labor_days: d.labor_days,
+      daily_rate: d.daily_rate,
+      labor_cost: cost,
+    })
+    .eq('id', d.id)
+    .eq('farm_id', w.ctx.farm.id)
+  if (error) return { error: dbError(error.message) }
+
+  refresh()
+  return {
+    message:
+      cost > 0
+        ? `OS ${orderNumber(os.number)} concluída — mão de obra lançada em Custos.`
+        : `OS ${orderNumber(os.number)} concluída.`,
+  }
 }
 
 /** Cancela (ou reabre) a OS. Cancelar tira da agenda as pulverizacoes programadas dela. */

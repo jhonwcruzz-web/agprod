@@ -83,7 +83,14 @@ export default async function AdubacaoPage({ searchParams }: { searchParams: Pro
         subtitle={`${ctx.season ? `Safra ${ctx.season.name}` : 'Todas as safras'}${
           total > rows.length ? ` · mostrando ${rows.length} de ${total}` : ''
         }`}
-        actions={<ButtonLink href="/adubacao?novo=1">Registrar adubação</ButtonLink>}
+        actions={
+          <>
+            <ButtonLink href={'/ordens?nova=adubacao' as Route} variant="secondary">
+              Ordem de serviço
+            </ButtonLink>
+            <ButtonLink href="/adubacao?novo=1">Registrar adubação</ButtonLink>
+          </>
+        }
       />
 
       {sp.novo === '1' && <FertilizationForm {...formProps} />}

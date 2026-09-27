@@ -293,8 +293,46 @@ async function main() {
     const { data: m2 } = await c.from('service_orders').select('status').eq('id', maintOs.id).single()
     if (m2.status === 'concluida') { passed++; console.log('  OK   OS de manutenção concluída ao registrar') }
     else { failed++; console.log('  FALHA OS de manutenção ficou', m2.status) }
+
+    // Adubacao: 1000 plantas em 2 ha. 150 g/planta = 150 kg; 100 kg/ha = 200 kg.
+    await c.from('plots').update({ plant_count: 1000 }).eq('id', plot.id)
+    const { data: urea } = await c.from('products')
+      .insert({ farm_id: farm.id, name: 'Ureia', category_id: await categoryId(c, 'Fertilizante'), unit: 'kg' }).select('id').single()
+    await c.from('inventory_movements').insert({ farm_id: farm.id, product_id: urea.id, movement_type: 'entrada', quantity: 300, unit_cost: 4, total_cost: 1200 })
+    expectOk('OS de adubação (dose por planta e por hectare)',
+      await submit(cookie, '/ordens?nova=adubacao', {
+        kind: 'adubacao', scheduled_date: today, plot_id: plot.id, assignee: 'Operador João', assignee_phone: '',
+        machine_id: '', implement_id: '', area: '', application_method: 'Em cova / sulco',
+        line_product_id: [product.id, urea.id], line_dose: ['150', '100'], line_dose_unit: ['g/planta', 'kg/ha'],
+        instructions: '',
+      }, 'line_dose'), 'de adubação criada')
+    const { data: fertOs } = await c.from('service_orders').select('id').eq('farm_id', farm.id).eq('kind', 'adubacao').single()
+    const { data: fertItems } = await c.from('service_order_items').select('quantity').eq('service_order_id', fertOs.id).order('sort')
+    const itemsOk = fertItems?.length === 2 && Number(fertItems[0].quantity) === 150 && Number(fertItems[1].quantity) === 200
+    if (itemsOk) { passed++; console.log('  OK   adubos calculados: 150 kg (por planta) e 200 kg (por ha)') }
+    else { failed++; console.log('  FALHA adubos:', JSON.stringify(fertItems)) }
+    await pdfCheck('PDF da OS de adubação', fertOs.id, 'os-adubacao.pdf')
+
+    // Tratos culturais: 10 diarias x R$ 80 = R$ 800 de mao de obra no talhao.
+    expectOk('OS de tratos culturais',
+      await submit(cookie, '/ordens?nova=tratos', {
+        kind: 'tratos', scheduled_date: today, plot_id: plot.id, assignee: 'Turma do Zé', assignee_phone: '',
+        activity: 'Poda', team_size: '6', labor_days: '12', daily_rate: '80',
+        checklist: 'Linhas 1 a 30\nDeixar 2 brotos por esporão', instructions: '',
+      }, 'labor_days'), 'de tratos culturais criada')
+    const { data: tratosOs } = await c.from('service_orders').select('id').eq('farm_id', farm.id).eq('kind', 'tratos').single()
+    await pdfCheck('PDF da OS de tratos culturais', tratosOs.id, 'os-tratos.pdf')
+    expectOk('concluir tratos com as diárias realizadas',
+      await submit(cookie, `/ordens?concluir=${tratosOs.id}`, {
+        id: tratosOs.id, done_date: today, labor_days: '10', daily_rate: '80', labor_cost: '', notes: '',
+      }, 'done_date'), 'mão de obra lançada em Custos')
+    const { data: labor } = await c.from('expenses').select('amount, category, plot_id').eq('service_order_id', tratosOs.id)
+    const laborOk = labor?.length === 1 && Number(labor[0].amount) === 800 && labor[0].category === 'mao_de_obra' && labor[0].plot_id === plot.id
+    if (laborOk) { passed++; console.log('  OK   mão de obra R$ 800 lançada no talhão') }
+    else { failed++; console.log('  FALHA mão de obra:', JSON.stringify(labor)) }
+
     const n = await osCount()
-    if (n === 3) { passed++; console.log('  OK   3 ordens numeradas na fazenda') }
+    if (n === 5) { passed++; console.log('  OK   5 ordens numeradas na fazenda') }
     else { failed++; console.log('  FALHA contagem de OS:', n) }
   } finally {
     const pg = new Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } })

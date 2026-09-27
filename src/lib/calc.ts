@@ -68,6 +68,46 @@ export function sprayQuantity(p: {
   return { ok: true, quantity: round(quantity, 3) }
 }
 
+/** Doses de adubo: por hectare ou por planta (cova, fertirrigacao). */
+export const FERT_DOSE_UNITS = ['kg/ha', 'g/ha', 'L/ha', 'mL/ha', 'g/planta', 'kg/planta', 'mL/planta', 'L/planta'] as const
+
+/**
+ * Quantidade de adubo na unidade do estoque.
+ *
+ * - por hectare: dose x area
+ * - por planta: dose x numero de plantas da area (proporcional, quando a
+ *   area aplicada e' so' parte do talhao)
+ */
+export function fertQuantity(p: {
+  dose: number | null
+  doseUnit: string
+  areaHa: number | null
+  plants: number | null
+  plotAreaHa?: number | null
+  productUnit: string | null
+}): QtyResult {
+  if (!p.dose || p.dose <= 0) return { ok: false, reason: 'Informe a dose.' }
+  if (!p.productUnit) return { ok: false, reason: 'Escolha o produto do estoque.' }
+  const [doseUnit, basis] = p.doseUnit.split('/')
+  let amount: number
+  if (basis === 'planta') {
+    if (!p.plants || p.plants <= 0)
+      return { ok: false, reason: 'Dose por planta precisa do número de plantas no cadastro do talhão.' }
+    const share = p.areaHa && p.plotAreaHa && p.areaHa < p.plotAreaHa ? p.areaHa / p.plotAreaHa : 1
+    amount = p.dose * p.plants * share
+  } else {
+    if (!p.areaHa || p.areaHa <= 0) return { ok: false, reason: 'Informe a área.' }
+    amount = p.dose * p.areaHa
+  }
+  const quantity = convert(amount, doseUnit, p.productUnit)
+  if (quantity === null)
+    return {
+      ok: false,
+      reason: `O produto está em ${p.productUnit} e a dose em ${doseUnit}: não dá para converter. Ajuste a unidade da dose.`,
+    }
+  return { ok: true, quantity: round(quantity, 3) }
+}
+
 /** Custo = quantidade gasta x custo medio do estoque. */
 export function stockCost(quantity: number | null, unitCost: number | null): number | null {
   if (quantity === null || unitCost === null || unitCost <= 0) return null

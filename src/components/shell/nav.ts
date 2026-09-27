@@ -67,7 +67,7 @@ export const AI_ITEM = {
 
 /** Atalhos do botao "+ Registrar" (secoes 41 e 42). */
 const ALL_QUICK_ACTIONS = [
-  { key: 'os', label: 'Ordem de serviço', href: '/ordens?nova=pulverizacao' as Route, icon: ClipboardTextIcon },
+  { key: 'os', label: 'Ordem de serviço', href: '/ordens' as Route, icon: ClipboardTextIcon },
   { key: 'producao', label: 'Colheita', href: '/producao?novo=1' as Route, icon: PlantIcon },
   { key: 'aplicacao', label: 'Pulverização', href: '/pulverizacao?novo=1' as Route, icon: TestTubeIcon },
   { key: 'adubacao', label: 'Adubação', href: '/adubacao?novo=1' as Route, icon: LeafIcon },

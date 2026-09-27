@@ -16,7 +16,7 @@ export async function getFormOptions(farmId: string) {
         .from('plots')
         // variedade e cultura vao junto: o formulario preenche a variedade
         // sozinho ao escolher o talhao.
-        .select('id, code, name, area, crop_id, variety_id')
+        .select('id, code, name, area, crop_id, variety_id, plant_count')
         .eq('farm_id', farmId)
         .neq('status', 'inativo')
         .order('code'),

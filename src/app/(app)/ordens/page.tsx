@@ -1,14 +1,15 @@
 import Link from 'next/link'
 import type { Metadata, Route } from 'next'
-import { TestTubeIcon, PlantIcon, WrenchIcon } from '@phosphor-icons/react/dist/ssr'
+import { LeafIcon, PlantIcon, ScissorsIcon, TestTubeIcon, WrenchIcon } from '@phosphor-icons/react/dist/ssr'
 import { requireFarm } from '@/lib/farm'
 import { createClient } from '@/lib/supabase/server'
 import { getFormOptions } from '@/lib/queries/options'
 import { byDate, eqIf, readFilters } from '@/lib/filters'
 import { closeLink, editLink, withParams } from '@/lib/url'
-import { date, relativeDay } from '@/lib/format'
+import { date, money, relativeDay } from '@/lib/format'
 import {
   isOrderKind,
+  ORDER_KINDS,
   ORDER_KIND_LABEL,
   ORDER_STATUS_LABEL,
   orderFileName,
@@ -23,12 +24,19 @@ import { FilterBar } from '@/components/ui/FilterBar'
 import { RowActions } from '@/components/ui/RowActions'
 import { ServiceOrderForm } from '@/components/forms/ServiceOrderForm'
 import { OrderActions } from './OrderActions'
+import { TratosDoneForm } from './TratosDoneForm'
 
 export const metadata: Metadata = { title: 'Ordens de serviço' }
 
 type SP = Record<string, string | undefined>
 
-const KIND_ICON = { pulverizacao: TestTubeIcon, colheita: PlantIcon, manutencao: WrenchIcon } as const
+const KIND_ICON = {
+  pulverizacao: TestTubeIcon,
+  adubacao: LeafIcon,
+  tratos: ScissorsIcon,
+  colheita: PlantIcon,
+  manutencao: WrenchIcon,
+} as const
 const STATUS_TONE = { aberta: 'warn', concluida: 'accent', cancelada: 'neutral' } as const
 
 export default async function OrdensPage({ searchParams }: { searchParams: Promise<SP> }) {
@@ -43,16 +51,18 @@ export default async function OrdensPage({ searchParams }: { searchParams: Promi
     .from('service_orders')
     .select(
       `id, number, kind, status, scheduled_date, assignee, assignee_phone, plot_id, machine_id, completed_at,
+       activity, labor_days, daily_rate, labor_cost,
        plots(code, name),
        machine:machines!service_orders_machine_id_fkey(name),
-       applications(product_name)`,
+       applications(product_name),
+       service_order_items(products(name))`,
       { count: 'exact' },
     )
     .eq('farm_id', ctx.farm.id)
   if (tab !== 'todas') q = q.eq('status', tab === 'abertas' ? 'aberta' : tab === 'concluidas' ? 'concluida' : 'cancelada')
   q = eqIf(eqIf(byDate(q, 'scheduled_date', f), 'plot_id', f.talhao), 'kind', kindFilter)
 
-  const [options, orders, counts, editing, machines] = await Promise.all([
+  const [options, orders, counts, editing, machines, finishing] = await Promise.all([
     getFormOptions(ctx.farm.id),
     q.order('scheduled_date', { ascending: tab === 'abertas' }).order('number', { ascending: false }).limit(500),
     supabase.from('service_orders').select('status').eq('farm_id', ctx.farm.id),
@@ -66,11 +76,31 @@ export default async function OrdensPage({ searchParams }: { searchParams: Promi
       .neq('status', 'inativo')
       .order('class')
       .order('name'),
+    // OS de tratos sendo concluida (?concluir=)
+    sp.concluir
+      ? supabase
+          .from('service_orders')
+          .select('id, number, activity, labor_days, daily_rate, plots(code)')
+          .eq('id', sp.concluir)
+          .eq('farm_id', ctx.farm.id)
+          .eq('kind', 'tratos')
+          .eq('status', 'aberta')
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ])
 
-  // Calda da OS em edicao.
+  // Linhas de produto da OS em edicao: calda (pulverizacao) ou adubos.
   const editLines =
-    editing.data?.kind === 'pulverizacao'
+    editing.data?.kind === 'adubacao'
+      ? ((
+          await supabase
+            .from('service_order_items')
+            .select('product_id, dose, dose_unit')
+            .eq('service_order_id', editing.data.id)
+            .eq('farm_id', ctx.farm.id)
+            .order('sort')
+        ).data ?? []).map((l) => ({ product_id: l.product_id, dose: Number(l.dose), dose_unit: l.dose_unit }))
+      : editing.data?.kind === 'pulverizacao'
       ? ((
           await supabase
             .from('applications')
@@ -112,18 +142,42 @@ export default async function OrdensPage({ searchParams }: { searchParams: Promi
       <PageHeader
         title="Ordens de serviço"
         subtitle="Gere a ordem, envie o PDF para quem executa e conclua quando o serviço for feito"
-        actions={
-          <>
-            <ButtonLink href={newHref('colheita')} variant="secondary">
-              OS de colheita
-            </ButtonLink>
-            <ButtonLink href={newHref('manutencao')} variant="secondary">
-              OS de manutenção
-            </ButtonLink>
-            <ButtonLink href={newHref('pulverizacao')}>OS de pulverização</ButtonLink>
-          </>
-        }
       />
+
+      <div className="-mt-6 flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-text-faint">Nova ordem</span>
+        {ORDER_KINDS.map((k) => {
+          const Icon = KIND_ICON[k]
+          return (
+            <Link
+              key={k}
+              href={newHref(k)}
+              className={`press inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors ${
+                newKind === k
+                  ? 'border-accent bg-accent text-on-accent'
+                  : 'border-line-strong bg-bg-raised text-text hover:border-accent hover:text-accent-text'
+              }`}
+            >
+              <Icon size={16} /> {ORDER_KIND_LABEL[k]}
+            </Link>
+          )
+        })}
+      </div>
+
+      {finishing.data && (
+        <TratosDoneForm
+          key={finishing.data.id}
+          order={{
+            id: finishing.data.id,
+            number: finishing.data.number,
+            activity: finishing.data.activity,
+            plot: (finishing.data.plots as { code: string } | null)?.code ?? null,
+            laborDays: finishing.data.labor_days === null ? null : Number(finishing.data.labor_days),
+            dailyRate: finishing.data.daily_rate === null ? null : Number(finishing.data.daily_rate),
+          }}
+          closeHref={withParams('/ordens', sp, { concluir: null })}
+        />
+      )}
 
       {newKind && (
         <ServiceOrderForm
@@ -156,7 +210,7 @@ export default async function OrdensPage({ searchParams }: { searchParams: Promi
 
       <FilterBar
         selects={[
-          { param: 'tipo', label: 'Tipo', options: (['pulverizacao', 'colheita', 'manutencao'] as const).map((k) => ({ value: k, label: ORDER_KIND_LABEL[k] })) },
+          { param: 'tipo', label: 'Tipo', options: ORDER_KINDS.map((k) => ({ value: k, label: ORDER_KIND_LABEL[k] })) },
           { param: 'talhao', label: 'Talhão', options: options.plots.map((p) => ({ value: p.id, label: p.code })) },
         ]}
       />
@@ -165,7 +219,7 @@ export default async function OrdensPage({ searchParams }: { searchParams: Promi
         {rows.length === 0 ? (
           <EmptyState
             title={tab === 'abertas' ? 'Nenhuma ordem aberta' : 'Nenhuma ordem nesta lista'}
-            description="Crie uma ordem de pulverização, colheita ou manutenção e envie o PDF pelo WhatsApp para quem vai executar."
+            description="Crie uma ordem de pulverização, adubação, tratos culturais, colheita ou manutenção e envie o PDF pelo WhatsApp para quem vai executar."
             action={<ButtonLink href={newHref('pulverizacao')}>OS de pulverização</ButtonLink>}
           />
         ) : (
@@ -177,22 +231,32 @@ export default async function OrdensPage({ searchParams }: { searchParams: Promi
               const plot = o.plots as { code: string; name: string | null } | null
               const machine = (o.machine as { name: string } | null)?.name
               const where = kind === 'manutencao' ? machine : plot?.code
-              const products = ((o.applications as { product_name: string }[] | null) ?? []).map((a) => a.product_name)
+              const products =
+                kind === 'adubacao'
+                  ? ((o.service_order_items as { products: { name: string } | null }[] | null) ?? []).map((i) => i.products?.name ?? '')
+                  : ((o.applications as { product_name: string }[] | null) ?? []).map((a) => a.product_name)
               const late = status === 'aberta' && o.scheduled_date < new Date().toISOString().slice(0, 10)
+              const laborCost = o.labor_cost !== null ? Number(o.labor_cost) : o.labor_days && o.daily_rate ? Number(o.labor_days) * Number(o.daily_rate) : null
               const detail =
-                kind === 'pulverizacao'
+                kind === 'pulverizacao' || kind === 'adubacao'
                   ? products.join(' + ') || 'sem produtos'
-                  : kind === 'colheita'
-                    ? [plot?.name].filter(Boolean).join('')
-                    : ''
+                  : kind === 'tratos'
+                    ? [o.activity, laborCost ? `${money(laborCost)} de mão de obra${o.labor_cost === null ? ' prevista' : ''}` : null].filter(Boolean).join(' · ')
+                    : kind === 'colheita'
+                      ? [plot?.name].filter(Boolean).join('')
+                      : ''
               const message =
                 `Ordem de serviço nº ${orderNumber(o.number)} — ${ORDER_KIND_LABEL[kind]}` +
                 (where ? ` · ${kind === 'manutencao' ? 'Máquina' : 'Talhão'} ${where}` : '') +
                 ` · para ${date(o.scheduled_date)}.` +
                 (kind === 'pulverizacao' && products.length ? ` Calda: ${products.join(', ')}.` : '') +
+                (kind === 'adubacao' && products.length ? ` Adubos: ${products.join(', ')}.` : '') +
+                (kind === 'tratos' && o.activity ? ` Serviço: ${o.activity}.` : '') +
                 ` ${ctx.farm.name}. Detalhes no PDF.`
               const completeHref =
-                kind === 'colheita'
+                kind === 'tratos'
+                  ? withParams('/ordens', sp, { concluir: o.id, nova: null, editar: null })
+                  : kind === 'colheita'
                   ? (`/producao?novo=1&os=${o.id}` as Route)
                   : kind === 'manutencao' && o.machine_id
                     ? (`/maquinas?registro=1&maquina=${o.machine_id}&os=${o.id}` as Route)

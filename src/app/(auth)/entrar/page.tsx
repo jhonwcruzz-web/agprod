@@ -22,7 +22,7 @@ export default async function EntrarPage({
 
       <p className="mt-8 border-t border-line pt-6 text-sm text-text-muted">
         Ainda não tem conta?{' '}
-        <Link href="/criar-conta" className="font-medium text-accent-text hover:underline">
+        <Link href="/criar-conta" className="font-medium text-text underline-offset-4 hover:underline">
           Criar conta
         </Link>
       </p>

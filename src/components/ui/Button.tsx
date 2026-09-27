@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { Route } from 'next'
 import type { ComponentProps, ReactNode } from 'react'
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'ink'
 type Size = 'sm' | 'md' | 'lg'
 
 const VARIANT: Record<Variant, string> = {
@@ -14,6 +14,8 @@ const VARIANT: Record<Variant, string> = {
     'bg-transparent text-text-muted border border-transparent hover:bg-bg-sunken hover:text-text disabled:opacity-40',
   danger:
     'bg-transparent text-danger border border-line-strong hover:bg-danger-soft hover:border-danger disabled:opacity-40',
+  // Neutro: preto no tema claro, branco no escuro (tela de entrada).
+  ink: 'bg-text text-bg border border-transparent hover:opacity-85 disabled:opacity-40',
 }
 
 const SIZE: Record<Size, string> = {
